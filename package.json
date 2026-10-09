@@ -10,6 +10,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "tokenfault": "node packages/cli/dist/bin.js",
     "build": "pnpm -r --workspace-concurrency=1 run build",
     "typecheck": "tsc -b && pnpm -r --parallel run typecheck && tsc -p tests/e2e/tsconfig.json && tsc -p tsconfig.tools.json",
     "lint": "eslint . --max-warnings=0",

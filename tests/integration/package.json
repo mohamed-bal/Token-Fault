@@ -12,5 +12,8 @@
     "@tokenfault/proxy": "workspace:*",
     "@tokenfault/shared": "workspace:*",
     "@tokenfault/testing": "workspace:*"
+  },
+  "devDependencies": {
+    "openai": "5.23.2"
   }
 }
