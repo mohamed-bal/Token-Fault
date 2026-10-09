@@ -57,6 +57,8 @@ export { FAULT_TYPES, SCENARIOS, findScenario } from './faults/catalog.js';
 export type { Scenario } from './faults/catalog.js';
 export { FaultPlanner, malformedFrame } from './faults/planner.js';
 export type { FaultAction, FrameInfo, PreResponsePlan } from './faults/planner.js';
+export { selectFaults } from './faults/selection.js';
+export type { FaultHeaderInput, FaultSelection } from './faults/selection.js';
 export { FrameClassifier } from './faults/classify.js';
 export { executeFaultActions, sleep } from './faults/executor.js';
 export type { ExecutionResult, FaultSink } from './faults/executor.js';

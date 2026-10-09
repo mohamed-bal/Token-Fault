@@ -28,11 +28,17 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
     rules: {
-      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'separate-type-imports' }],
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { fixStyle: 'separate-type-imports' },
+      ],
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
       '@typescript-eslint/only-throw-error': 'error',
       'no-console': 'off',
@@ -46,7 +52,11 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: [{ group: ['node:*'], message: 'Use @tokenfault/core/node for Node-specific code.' }] },
+        {
+          patterns: [
+            { group: ['node:*'], message: 'Use @tokenfault/core/node for Node-specific code.' },
+          ],
+        },
       ],
     },
   },

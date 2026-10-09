@@ -1,0 +1,27 @@
+{
+  "name": "@tokenfault/mock-llm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic OpenAI-compatible Chat Completions mock server with built-in fault scenarios. No API key or network access needed.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tokenfault/core": "workspace:*",
+    "@tokenfault/shared": "workspace:*",
+    "fastify": "5.12.5",
+    "zod": "^4.6.5"
+  }
+}

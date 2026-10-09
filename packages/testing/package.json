@@ -1,0 +1,27 @@
+{
+  "name": "@tokenfault/testing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Helpers for testing AI streaming clients against TokenFault: start the mock LLM and proxy in-process, run streaming requests and get inspected results.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tokenfault/core": "workspace:*",
+    "@tokenfault/mock-llm": "workspace:*",
+    "@tokenfault/proxy": "workspace:*",
+    "@tokenfault/shared": "workspace:*"
+  }
+}

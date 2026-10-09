@@ -349,6 +349,8 @@ export interface ActiveFaults {
 }
 
 export interface ProbeRequest {
+  /** Model name sent upstream. Default `tokenfault-mock-1`. */
+  readonly model?: string;
   readonly prompt?: string;
   readonly scenarioId?: string;
   readonly withTools?: boolean;
