@@ -12,7 +12,13 @@ afterAll(async () => {
 });
 
 const run = (scenario: string, extra: Partial<Parameters<typeof resilientChat>[0]> = {}) =>
-  resilientChat({ baseUrl: stack.proxy.url, prompt: 'example', headers: { 'x-tokenfault-scenario': scenario }, baseBackoffMs: 10, ...extra });
+  resilientChat({
+    baseUrl: stack.proxy.url,
+    prompt: 'example',
+    headers: { 'x-tokenfault-scenario': scenario },
+    baseBackoffMs: 10,
+    ...extra,
+  });
 
 describe('example resilient client against TokenFault scenarios', () => {
   it('completes a normal stream', async () => {
@@ -31,7 +37,9 @@ describe('example resilient client against TokenFault scenarios', () => {
   });
 
   it('times out a stalled stream with the idle timeout', async () => {
-    await expect(run('stream-stall', { idleTimeoutMs: 500 })).rejects.toMatchObject({ kind: 'idle-timeout' });
+    await expect(run('stream-stall', { idleTimeoutMs: 500 })).rejects.toMatchObject({
+      kind: 'idle-timeout',
+    });
   });
 
   it('retries 429 honouring Retry-After and gives up after maxAttempts', async () => {
@@ -43,6 +51,8 @@ describe('example resilient client against TokenFault scenarios', () => {
   });
 
   it('hits the first-byte timeout on a slow first response', async () => {
-    await expect(run('slow-first-response', { firstByteTimeoutMs: 300, maxAttempts: 1 })).rejects.toMatchObject({ kind: 'first-byte-timeout' });
+    await expect(
+      run('slow-first-response', { firstByteTimeoutMs: 300, maxAttempts: 1 }),
+    ).rejects.toMatchObject({ kind: 'first-byte-timeout' });
   });
 });
