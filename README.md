@@ -237,7 +237,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and the [decision log](docs/engineering/D
 - Sessions live in memory only (200 by default). Recordings are the persistence mechanism.
 - Replay reproduces recorded bytes or events and their timing. It does not regenerate a model response.
 - Fragment timing depends on the OS network stack: separate writes usually arrive as separate reads, but TCP does not guarantee it.
-- Verified in CI on Linux with Node 22. Windows, macOS and Node 24 jobs are configured but have not produced results yet.
+- Verified in CI on Linux (Node 22 and 24), Windows and macOS (Node 22). The Studio browser tests run on Linux only.
 
 ## Development
 

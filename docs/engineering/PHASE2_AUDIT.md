@@ -107,4 +107,4 @@ All findings above are fixed in local commits on top of `6fe5140`, each with a r
 (documented) and GIT-1 (manual). Commits: `a459227` (SEC-1..7, PERF-1/2, XP-1..7), `38222e8` (SEC-8),
 `2dd47b3` (DOC-2 and auth documentation), `7e4348f` (PKG-1..6), `f0c04f3` (CI matrix and audit), `c4556fb`
 (benchmarks, DOC-3), `5689324` (CLI recording overwrite DX), `83e1383` (STU-1..6), and the final documentation
-commit (DOC-1). Cross-platform fixes XP-1..7 are verified on Linux only until the Windows and macOS CI jobs run.
+commit (DOC-1). XP-9 (`867b95e`) was found by the first Windows CI run. CI run #3 on `867b95e` passed on Linux, Windows and macOS.

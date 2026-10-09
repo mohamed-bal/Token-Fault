@@ -20,8 +20,8 @@ This file reports the state that was **verified**, not planned progress.
 
 ## Quality gates
 
-Local results are from the Linux environment of record above. GitHub results are quoted from GitHub Actions; a
-platform without a GitHub result is **not verified**.
+Local results are from the Linux environment of record above. GitHub results are quoted from GitHub Actions; E2E
+and accessibility tests run on Linux only.
 
 | Gate                                               | Command                 | Result (local, Linux)                                   |
 | -------------------------------------------------- | ----------------------- | ------------------------------------------------------- |
@@ -29,7 +29,7 @@ platform without a GitHub result is **not verified**.
 | Typecheck (all packages, tests, E2E, tool configs) | `pnpm typecheck`        | ✅ pass                                                 |
 | Lint (type-aware, `--max-warnings=0`)              | `pnpm lint`             | ✅ pass                                                 |
 | Format                                             | `pnpm format:check`     | ✅ pass                                                 |
-| Unit tests                                         | `pnpm test:unit`        | ✅ 206 passed, 12 files                                 |
+| Unit tests                                         | `pnpm test:unit`        | ✅ 210 passed, 12 files                                 |
 | Integration + contract tests                       | `pnpm test:integration` | ✅ 96 passed, 7 files                                   |
 | CLI smoke test (built binary)                      | `pnpm smoke`            | ✅ 36/36 checks                                         |
 | E2E incl. accessibility (Playwright, Chromium)     | `pnpm test:e2e`         | ✅ 6 passed (axe-core WCAG 2.2 AA rules on every view)  |
@@ -38,12 +38,12 @@ platform without a GitHub result is **not verified**.
 | Benchmarks                                         | `pnpm bench`            | Measured, not a gate: [BENCHMARKS.md](BENCHMARKS.md)    |
 | Code coverage                                      | —                       | ⚪ Not measured; no percentage is claimed               |
 
-| Platform (GitHub Actions) | Result                                                                                                                                                               |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linux, Node 22            | ✅ Run #1 ([37934154330](https://github.com/mohamed-bal/Token-Fault/actions/runs/37934154330)) passed on `6fe5140` (`verify` and `e2e`). Later commits: not run yet. |
-| Windows, Node 22          | ⚪ Not verified: the matrix job exists in `ci.yml` but has not run on GitHub                                                                                         |
-| macOS, Node 22            | ⚪ Not verified: as above                                                                                                                                            |
-| Linux, Node 24            | ⚪ Not verified: as above                                                                                                                                            |
+| Platform (GitHub Actions) | Result                                                                                                                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux, Node 22            | ✅ Run #3 ([37955049281](https://github.com/mohamed-bal/Token-Fault/actions/runs/37955049281)) on `867b95e`: build, typecheck, lint, format, unit, integration, smoke, external install; E2E + accessibility; dependency audit |
+| Windows, Node 22          | ✅ Run #3 on `867b95e` (same steps as Linux, E2E excluded). Run #2 on `39e2ef0` failed 3 `fragmented-sse` tests (timer granularity, XP-9), fixed in `867b95e`                                                                  |
+| macOS, Node 22            | ✅ Runs #2 and #3 (same steps as Linux, E2E excluded)                                                                                                                                                                          |
+| Linux, Node 24            | ✅ Runs #2 and #3 (same steps as Linux Node 22, E2E excluded)                                                                                                                                                                  |
 
 ### Test inventory
 
@@ -53,7 +53,7 @@ platform without a GitHub result is **not verified**.
 | `packages/core/test/sse-framer-encoder.test.ts` |     8 | Byte-exact framing, CRLF across chunks, encoder round-trip                                                                                                     |
 | `packages/core/test/chat-stream.test.ts`        |    17 | Interpreter, accumulator, protocol violations, retention bounds                                                                                                |
 | `packages/core/test/stream-inspector.test.ts`   |    12 | Metrics, outcomes, capture limits, redaction, native/portable base64 equivalence                                                                               |
-| `packages/core/test/faults.test.ts`             |    41 | Schema validation, determinism, scenarios A–I planning, executor                                                                                               |
+| `packages/core/test/faults.test.ts`             |    45 | Schema validation, determinism, scenarios A–I planning, executor, wait pacing                                                                                  |
 | `packages/core/test/recording-replay.test.ts`   |    18 | Redaction skeletons, schema validation (malicious inputs), replay modes and timing                                                                             |
 | `packages/core/test/review-regressions.test.ts` |     7 | Review regressions: hostile recording data, replayability, long sleeps, `endResponse`                                                                          |
 | `packages/shared/test/redact.test.ts`           |    22 | Sensitive headers, query redaction (including bare parameters), secret scrubbing                                                                               |
@@ -121,7 +121,6 @@ All items under _Implemented_ in [ROADMAP.md](../../ROADMAP.md).
 ## Unfinished work
 
 - First npm publication and GitHub release (release-ready, waiting for approval; see [RELEASE.md](RELEASE.md))
-- CI results for Windows, macOS and Node 24 (configured, not run yet)
 - Coverage reporting; E2E on Windows and macOS
 - Responses API and Anthropic Messages adapters (not claimed as supported)
 
@@ -136,8 +135,7 @@ All items under _Implemented_ in [ROADMAP.md](../../ROADMAP.md).
 
 ## Next priorities
 
-1. Push (with approval) and get the Windows, macOS and Node 24 CI results; fix any platform failures.
-2. Delete the obsolete remote branch `ccr-c63d96e2-537cz5` (GIT-1, manual).
-3. Apply the repository metadata proposed in [RELEASE.md](RELEASE.md) (manual).
-4. First release 0.1.0 following [RELEASE.md](RELEASE.md), once every gate passes and the maintainer approves.
-5. Responses API adapter with contract tests.
+1. Delete the obsolete remote branch `ccr-c63d96e2-537cz5` (GIT-1, manual).
+2. Apply the repository metadata proposed in [RELEASE.md](RELEASE.md) (manual).
+3. First release 0.1.0 following [RELEASE.md](RELEASE.md), once every gate passes and the maintainer approves.
+4. Responses API adapter with contract tests.

@@ -86,7 +86,7 @@ ReactDOM, scheduler and Tailwind CSS output; their licenses ship in `studio/THIR
 > Not supported yet: OpenAI Responses API, Anthropic Messages API, WebSockets, HTTP/2 upstreams.
 > TokenFault has had internal reviews only, no external security audit.
 
-The "tested on Windows and macOS" line may only stay if those CI jobs pass on the release commit.
+The "tested on Windows and macOS" line may only stay if those CI jobs pass on the release commit (they pass on `867b95e`).
 
 ## Repository metadata (proposal; apply manually)
 
@@ -104,16 +104,17 @@ website) and the **About** gear on the repository page (topics).
 
 ## Release readiness gates
 
-Evaluated on 2026-10-09 against local commit history that had not been pushed at the time of writing. `NOT VERIFIED`
+Evaluated on 2026-10-09 against `867b95e` on `main`. `NOT VERIFIED`
 means there is no evidence yet; it is not a pass.
 
-| Gate                   | Criteria                                                                                       | Status                                                                                                                              |
-| ---------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| A — Correctness        | Core, integration, contract and E2E tests pass                                                 | **PASS** locally on Linux: 206 unit, 96 integration/contract, 6 E2E, 36 smoke checks; on GitHub only up to `6fe5140`                |
-| B — Packaging          | Tarballs validated; external install works; exports and types resolve; runtime deps present    | **PASS** locally on Linux (`pnpm test:pack`, 57/57 checks); not yet run in CI                                                       |
-| C — Security           | No unmitigated Critical/High findings; sensitive-data tests pass; dependency findings reviewed | **PASS**: no open Critical/High; redaction and token-leak tests pass; `pnpm audit` 0 advisories. Internal review only               |
-| D — Compatibility      | Linux CI verified; Windows and macOS CI verified when run                                      | **NOT VERIFIED**: Linux passed on GitHub at `6fe5140` only; Windows, macOS and Node 24 have never run                               |
-| E — Documentation      | Quickstart verified; protocols documented accurately; limitations stated; license reviewed     | **PASS**: README journey replayed from a clean clone (Linux); MIT, holder `mohamed-bal` (D-013), Studio third-party notices shipped |
-| F — Release operations | Versioning defined; graph publishable; release notes; rollback documented                      | **PASS** (this document); publishing itself not exercised                                                                           |
+| Gate                   | Criteria                                                                                       | Status                                                                                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A — Correctness        | Core, integration, contract and E2E tests pass                                                 | **PASS**: CI run #3 on `867b95e` (Linux, Windows, macOS; E2E on Linux); locally 210 unit, 96 integration/contract, 6 E2E, 36 smoke checks                                  |
+| B — Packaging          | Tarballs validated; external install works; exports and types resolve; runtime deps present    | **PASS**: `pnpm test:pack` (57 checks) green in CI on Linux, Windows and macOS                                                                                             |
+| C — Security           | No unmitigated Critical/High findings; sensitive-data tests pass; dependency findings reviewed | **PASS**: no open Critical/High; redaction and token-leak tests pass; `pnpm audit` 0 advisories. Internal review only                                                      |
+| D — Compatibility      | Linux CI verified; Windows and macOS CI verified when run                                      | **PASS**: CI run #3 ([37955049281](https://github.com/mohamed-bal/Token-Fault/actions/runs/37955049281)) on `867b95e`: Linux (Node 22 and 24), Windows and macOS (Node 22) |
+| E — Documentation      | Quickstart verified; protocols documented accurately; limitations stated; license reviewed     | **PASS**: README journey replayed from a clean clone (Linux); MIT, holder `mohamed-bal` (D-013), Studio third-party notices shipped                                        |
+| F — Release operations | Versioning defined; graph publishable; release notes; rollback documented                      | **PASS** (this document); publishing itself not exercised                                                                                                                  |
 
-**Full release readiness is not declared** while gate D is not verified on the current head.
+All six gates pass on `867b95e`. The release itself (npm publication, tag, GitHub release) still needs the
+maintainer's approval, and gates must be re-checked on the release commit.

@@ -37,6 +37,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Studio paths were percent-decoded twice
 - SSE decoder was quadratic in chunk size (3–5× slower on 64–256 KiB reads)
 - `--json` output could be truncated on exit through a pipe; reset terminations could drop unsent bytes on Windows
+- Fault waits (fragmentation gaps, mock event interval) paid the OS timer granularity on every wait; on Windows
+  `fragmented-sse` ran ~15× longer than configured
 - `inspect --record` to an existing file sent the request first and then failed with a raw `EEXIST`
 - An unrelated `apps/studio/dist` next to an installed CLI could be served as the Studio
 
