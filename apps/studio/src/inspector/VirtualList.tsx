@@ -1,8 +1,10 @@
 /**
  * Fixed-row-height windowed list with keyboard navigation (↑/↓/PageUp/PageDown/Home/End).
  * Only visible rows are rendered, so sessions with tens of thousands of events stay fast.
+ * Selectable lists are ARIA listboxes: focus stays on the list and `aria-activedescendant`
+ * points at the selected option, with `aria-setsize`/`aria-posinset` because rows are windowed.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
 interface Props<T> {
@@ -10,7 +12,8 @@ interface Props<T> {
   rowHeight: number;
   height: number;
   selectedIndex: number | null;
-  onSelect: (index: number) => void;
+  /** Omit for a read-only list (role="list"; the keyboard scrolls instead of selecting). */
+  onSelect?: ((index: number) => void) | undefined;
   renderRow: (item: T, index: number, selected: boolean) => ReactNode;
   label: string;
   /** Keep the list scrolled to the end while new items arrive (until the user scrolls up). */
@@ -28,6 +31,9 @@ export function VirtualList<T>({
   follow = false,
 }: Props<T>) {
   const ref = useRef<HTMLDivElement>(null);
+  const idBase = useId();
+  const selectable = onSelect !== undefined;
+  const optionId = (i: number): string => `${idBase}-row-${i}`;
   const [scrollTop, setScrollTop] = useState(0);
   const pinned = useRef(true);
 
@@ -51,10 +57,13 @@ export function VirtualList<T>({
     rows.push(
       <div
         key={i}
-        role="option"
-        aria-selected={i === selectedIndex}
+        id={optionId(i)}
+        role={selectable ? 'option' : 'listitem'}
+        aria-selected={selectable ? i === selectedIndex : undefined}
+        aria-setsize={items.length}
+        aria-posinset={i + 1}
         style={{ position: 'absolute', top: i * rowHeight, left: 0, right: 0, height: rowHeight }}
-        onClick={() => onSelect(i)}
+        onClick={onSelect ? () => onSelect(i) : undefined}
       >
         {renderRow(items[i]!, i, i === selectedIndex)}
       </div>,
@@ -62,7 +71,7 @@ export function VirtualList<T>({
   }
 
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (items.length === 0) return;
+    if (items.length === 0 || !onSelect) return;
     const page = Math.max(1, Math.floor(height / rowHeight) - 1);
     const current = selectedIndex ?? -1;
     const next: Record<string, number> = {
@@ -83,8 +92,13 @@ export function VirtualList<T>({
   return (
     <div
       ref={ref}
-      role="listbox"
+      role={selectable ? 'listbox' : 'list'}
       aria-label={label}
+      aria-activedescendant={
+        selectable && selectedIndex !== null && selectedIndex >= first && selectedIndex < last
+          ? optionId(selectedIndex)
+          : undefined
+      }
       tabIndex={0}
       onKeyDown={onKeyDown}
       onScroll={(e) => {

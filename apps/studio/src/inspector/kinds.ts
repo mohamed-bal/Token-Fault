@@ -17,7 +17,7 @@ export function eventStyle(e: CapturedEvent): EventStyle {
     case 'chunk':
       if (i.toolCalls.length > 0) return { label: 'tool', color: '#c084fc', text: 'text-tool' };
       if (i.contentLength > 0) return { label: 'content', color: '#7c9cff', text: 'text-accent' };
-      if (i.finishReasons.length > 0) return { label: 'finish', color: '#4ade80', text: 'text-ok' };
+      if (i.finishReasons.length > 0) return { label: 'finish', color: '#2dd4bf', text: 'text-ok' };
       return { label: 'meta', color: '#5d6573', text: 'text-faint' };
   }
 }
@@ -48,7 +48,7 @@ export function eventSummary(e: CapturedEvent): string {
         parts.push(
           `usage ${i.usage.promptTokens ?? '?'}/${i.usage.completionTokens ?? '?'}/${i.usage.totalTokens ?? '?'}`,
         );
-      return parts.join('  ') || '(empty delta)';
+      return parts.join('  ') || '(no delta)';
     }
   }
 }

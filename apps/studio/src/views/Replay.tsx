@@ -132,7 +132,7 @@ export function ReplayView({
                 <span className="font-mono text-faint">{time(s.startedAt)}</span>
                 <Badge tone={outcomeTone(s.outcome)}>{OUTCOME_LABEL[s.outcome]}</Badge>
                 {s.source === 'replay' && <Badge tone="info">replay</Badge>}
-                {s.scenarioId && <Badge tone="warn">{s.scenarioId}</Badge>}
+                {s.scenarioId && <Badge tone="warn">fault: {s.scenarioId}</Badge>}
                 <span className="text-muted">
                   {s.metrics.eventCount} events · {ms(s.metrics.durationMs)}
                 </span>

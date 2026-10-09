@@ -53,12 +53,18 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
             autoComplete="off"
             spellCheck={false}
             required
+            // The sign-in form is the whole page; start there so keyboard users can paste at once.
+            autoFocus
+            aria-invalid={error !== null}
+            aria-describedby={error ? 'signin-error' : undefined}
             value={token}
             onChange={(e) => setToken(e.target.value)}
             data-testid="control-token"
           />
         </label>
-        <ErrorBanner error={error} />
+        <div id="signin-error">
+          <ErrorBanner error={error} />
+        </div>
         <button
           type="submit"
           className="btn btn-primary w-full justify-center"

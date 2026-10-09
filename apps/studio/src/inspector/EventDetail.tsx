@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { CapturedEvent } from '@tokenfault/shared';
-import { Badge, CopyButton, EmptyState, KeyValue } from '../components/ui';
+import { Badge, CopyButton, EmptyState, KeyValue, TabPanel, Tabs } from '../components/ui';
 import { JsonView } from '../components/JsonView';
 import { bytes, ms } from '../format';
 import { eventStyle } from './kinds';
@@ -34,25 +34,30 @@ export function EventDetail({
           #{event.seq}
         </span>
         <Badge tone={i.kind === 'chunk' ? 'info' : i.kind === 'done' ? 'ok' : 'err'}>
-          {i.kind}
+          {i.kind === 'chunk' ? 'completion chunk' : i.kind}
         </Badge>
         <span className={`text-[11px] ${style.text}`}>{style.label}</span>
-        <div className="ml-auto flex gap-1" role="tablist" aria-label="Event detail view">
-          {(['parsed', 'raw', 'diagnostics'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              className={`rounded px-2 py-0.5 text-[11.5px] ${tab === t ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg'}`}
-              onClick={() => setTab(t)}
-            >
-              {t === 'diagnostics' ? `diagnostics (${event.diagnostics.length})` : t}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          idPrefix="event"
+          label="Event detail view"
+          className="ml-auto flex gap-1"
+          tabs={[
+            { id: 'parsed', label: 'parsed' },
+            { id: 'raw', label: 'raw' },
+            { id: 'diagnostics', label: `diagnostics (${event.diagnostics.length})` },
+          ]}
+          selected={tab}
+          onSelect={setTab}
+          tabClassName={(sel) =>
+            `min-h-6 rounded px-2 py-1 text-[11.5px] ${sel ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg'}`
+          }
+        />
       </div>
-      <div className="scroll-thin min-h-0 flex-1 space-y-3 overflow-auto p-3">
+      <TabPanel
+        idPrefix="event"
+        selected={tab}
+        className="scroll-thin min-h-0 flex-1 space-y-3 overflow-auto p-3"
+      >
         {tab === 'parsed' && (
           <>
             <KeyValue
@@ -81,7 +86,7 @@ export function EventDetail({
                 {i.toolCalls.map((t) => (
                   <Field
                     key={`${t.choiceIndex}.${t.index}`}
-                    label={`tool call ${t.index}${t.id ? ` · ${t.id}` : ''}${t.name ? ` · ${t.name}` : ''}`}
+                    label={`tool-call delta ${t.index}${t.id ? ` · ${t.id}` : ''}${t.name ? ` · ${t.name}` : ''}`}
                   >
                     {t.argumentsFragment !== null ? (
                       <span className="whitespace-pre-wrap text-tool">
@@ -100,7 +105,7 @@ export function EventDetail({
                   </Field>
                 ))}
                 {i.usage && (
-                  <Field label="usage (reported by API)">{`prompt ${i.usage.promptTokens ?? '—'} · completion ${i.usage.completionTokens ?? '—'} · total ${i.usage.totalTokens ?? '—'}`}</Field>
+                  <Field label="usage (as reported in the stream, not measured)">{`prompt ${i.usage.promptTokens ?? '—'} · completion ${i.usage.completionTokens ?? '—'} · total ${i.usage.totalTokens ?? '—'}`}</Field>
                 )}
                 {i.unknownKeys.length > 0 && (
                   <Field label="keys not modelled (kept in raw data)">
@@ -173,7 +178,7 @@ export function EventDetail({
               ))}
             </ul>
           ))}
-      </div>
+      </TabPanel>
     </div>
   );
 }

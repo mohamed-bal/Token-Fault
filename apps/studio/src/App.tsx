@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { SignIn } from './components/SignIn';
 import type { ServerInfo } from '@tokenfault/shared';
 import { api, ApiError, UNAUTHORIZED_EVENT } from './api';
-import { Dot, ErrorBanner } from './components/ui';
+import { Dot, ErrorBanner, Spinner } from './components/ui';
 import { useLive } from './live';
 import { useRoute } from './router';
 import type { View } from './router';
@@ -11,11 +11,16 @@ import { Inspector } from './views/Inspector';
 import { Overview } from './views/Overview';
 import { ReplayView } from './views/Replay';
 
-const NAV: readonly { view: View; label: string; hint: string }[] = [
-  { view: 'overview', label: 'Overview', hint: 'Sessions and server status' },
-  { view: 'inspector', label: 'Stream Inspector', hint: 'Events, timing and diagnostics' },
-  { view: 'faults', label: 'Fault Lab', hint: 'Inject failures' },
-  { view: 'replay', label: 'Replay', hint: 'Replay and import recordings' },
+const NAV: readonly { view: View; label: string; short: string; hint: string }[] = [
+  { view: 'overview', label: 'Overview', short: 'Overview', hint: 'Sessions and server status' },
+  {
+    view: 'inspector',
+    label: 'Stream Inspector',
+    short: 'Inspector',
+    hint: 'Events, timing and diagnostics',
+  },
+  { view: 'faults', label: 'Fault Lab', short: 'Faults', hint: 'Inject failures' },
+  { view: 'replay', label: 'Replay', short: 'Replay', hint: 'Replay and import recordings' },
 ];
 
 function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
@@ -24,6 +29,15 @@ function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
   const [info, setInfo] = useState<ServerInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const viewLabel = NAV.find((n) => n.view === route.view)?.label ?? 'Studio';
+
+  // Move focus to the new view (and after sign-in) so keyboard and screen-reader users are
+  // not left on an element that no longer exists; keep the document title in step.
+  useEffect(() => {
+    document.title = `${viewLabel} · TokenFault Studio`;
+    mainRef.current?.focus({ preventScroll: true });
+  }, [viewLabel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,10 +76,7 @@ function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
 
   return (
     <div className="grid h-full grid-cols-[208px_1fr] max-md:grid-cols-1">
-      <aside
-        className="flex flex-col border-r border-line bg-surface max-md:hidden"
-        aria-label="Main navigation"
-      >
+      <aside className="flex flex-col border-r border-line bg-surface max-md:hidden">
         <div className="flex items-center gap-2 px-4 py-4">
           <svg viewBox="0 0 32 32" className="size-6" aria-hidden>
             <rect width="32" height="32" rx="7" fill="#171b21" />
@@ -83,7 +94,7 @@ function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
             <div className="text-[10px] tracking-wide text-faint uppercase">Studio</div>
           </div>
         </div>
-        <nav className="flex flex-col gap-0.5 px-2">
+        <nav className="flex flex-col gap-0.5 px-2" aria-label="Main navigation">
           {NAV.map((item) => {
             const active = route.view === item.view;
             return (
@@ -105,7 +116,7 @@ function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
           {onSignOut && (
             <button
               type="button"
-              className="text-faint underline-offset-2 hover:text-fg hover:underline"
+              className="-mx-1 min-h-6 rounded px-1 py-1 text-faint underline-offset-2 hover:text-fg hover:underline"
               onClick={onSignOut}
             >
               Sign out
@@ -121,9 +132,10 @@ function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
               <a
                 key={item.view}
                 href={`#/${item.view}`}
+                aria-current={route.view === item.view ? 'page' : undefined}
                 className={`rounded px-2 py-1 text-[12px] ${route.view === item.view ? 'bg-surface-3' : 'text-muted'}`}
               >
-                {item.label.split(' ')[0]}
+                {item.short}
               </a>
             ))}
           </nav>
@@ -170,7 +182,12 @@ function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
           </div>
         </header>
 
-        <main className="scroll-thin min-h-0 flex-1 overflow-auto p-4">
+        <main
+          ref={mainRef}
+          tabIndex={-1}
+          className="scroll-thin min-h-0 flex-1 overflow-auto p-4 outline-none"
+        >
+          <h1 className="sr-only">{viewLabel}</h1>
           <div className="mb-3 empty:hidden">
             <ErrorBanner error={error} onDismiss={() => setError(null)} />
           </div>
@@ -223,7 +240,13 @@ export function App() {
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, [check]);
 
-  if (auth === 'checking') return null;
+  if (auth === 'checking') {
+    return (
+      <main className="flex h-full items-center justify-center p-6">
+        <Spinner label="Checking session" />
+      </main>
+    );
+  }
   if (auth === 'unreachable') {
     return (
       <main className="flex h-full items-center justify-center p-6">

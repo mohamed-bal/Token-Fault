@@ -61,7 +61,6 @@ export function ChunkPanel({
         rowHeight={24}
         height={height}
         selectedIndex={null}
-        onSelect={() => undefined}
         label="Network chunks"
         renderRow={(c) => (
           <div className="grid h-full grid-cols-[56px_88px_72px_1fr] items-center border-b border-line/40 px-3 font-mono text-[11.5px]">

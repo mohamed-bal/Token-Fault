@@ -85,11 +85,11 @@ export function SessionList({
               <div className="flex items-center gap-1.5 pl-4">
                 <Badge tone={outcomeTone(s.outcome)}>{OUTCOME_LABEL[s.outcome]}</Badge>
                 {s.source === 'replay' && <Badge tone="info">replay</Badge>}
-                {s.scenarioId && <Badge tone="warn">{s.scenarioId}</Badge>}
+                {s.scenarioId && <Badge tone="warn">fault: {s.scenarioId}</Badge>}
                 {!s.scenarioId && s.faults.length > 0 && <Badge tone="warn">custom faults</Badge>}
               </div>
               <div className="truncate pl-4 font-mono text-[11px] text-faint">
-                {s.method} {s.path} · {s.metrics.eventCount} ev · {ms(s.metrics.durationMs)}
+                {s.method} {s.path} · {s.metrics.eventCount} SSE events · {ms(s.metrics.durationMs)}
               </div>
             </button>
           </li>

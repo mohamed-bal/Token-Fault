@@ -9,7 +9,7 @@
   --color-line-strong: #343b46;
   --color-fg: #e6e8eb;
   --color-muted: #8c95a3;
-  --color-faint: #5d6573;
+  --color-faint: #838c9b; /* ≥ 4.5:1 on every surface (WCAG 1.4.3) */
   --color-accent: #7c9cff;
   --color-accent-strong: #9db4ff;
   --color-ok: #4ade80;
@@ -59,7 +59,7 @@
     @apply border-err/50 bg-err/10 text-err hover:bg-err/20;
   }
   .input {
-    @apply rounded-md border border-line-strong bg-bg px-2 py-1.5 text-[12px] text-fg placeholder:text-faint focus:border-accent focus:outline-none;
+    @apply rounded-md border border-line-strong bg-bg px-2 py-1.5 text-[12px] text-fg placeholder:text-faint focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent;
   }
   .label {
     @apply text-[11px] font-medium tracking-wide text-muted uppercase;

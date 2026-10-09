@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { Tone } from '../format';
 
 const TONE: Record<Tone, string> = {
@@ -46,9 +46,10 @@ export function Stat({
   hint?: string | undefined;
 }) {
   return (
-    <div className="panel px-3 py-2.5" title={hint}>
+    <div className="panel px-3 py-2.5">
       <div className="label">{label}</div>
       <div className="mt-1 font-mono text-[17px] font-medium text-fg tabular-nums">{value}</div>
+      {hint && <div className="mt-0.5 text-[10.5px] leading-tight text-faint">{hint}</div>}
     </div>
   );
 }
@@ -110,7 +111,7 @@ export function ErrorBanner({
       {onDismiss && (
         <button
           type="button"
-          className="text-err/80 hover:text-err"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded text-err/80 hover:text-err"
           onClick={onDismiss}
           aria-label="Dismiss error"
         >
@@ -169,5 +170,99 @@ export function KeyValue({ rows }: { rows: readonly (readonly [string, ReactNode
         </div>
       ))}
     </dl>
+  );
+}
+
+export interface TabItem<T extends string> {
+  readonly id: T;
+  readonly label: string;
+}
+
+/**
+ * WAI-ARIA tabs: roving tabindex, ←/→/Home/End move and activate, each tab controls
+ * the panel rendered by `TabPanel` with the same `idPrefix`.
+ */
+export function Tabs<T extends string>({
+  idPrefix,
+  label,
+  tabs,
+  selected,
+  onSelect,
+  className = '',
+  tabClassName,
+}: {
+  idPrefix: string;
+  label: string;
+  tabs: readonly TabItem<T>[];
+  selected: T;
+  onSelect: (id: T) => void;
+  className?: string;
+  tabClassName: (selected: boolean) => string;
+}) {
+  const refs = useRef(new Map<T, HTMLButtonElement>());
+  const onKeyDown = (e: KeyboardEvent): void => {
+    const index = tabs.findIndex((t) => t.id === selected);
+    const next =
+      e.key === 'ArrowRight'
+        ? (index + 1) % tabs.length
+        : e.key === 'ArrowLeft'
+          ? (index - 1 + tabs.length) % tabs.length
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? tabs.length - 1
+              : null;
+    if (next === null) return;
+    e.preventDefault();
+    const tab = tabs[next];
+    if (!tab) return;
+    onSelect(tab.id);
+    refs.current.get(tab.id)?.focus();
+  };
+  return (
+    <div className={className} role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          ref={(el) => {
+            if (el) refs.current.set(t.id, el);
+            else refs.current.delete(t.id);
+          }}
+          type="button"
+          role="tab"
+          id={`${idPrefix}-tab-${t.id}`}
+          aria-selected={selected === t.id}
+          aria-controls={`${idPrefix}-panel`}
+          tabIndex={selected === t.id ? 0 : -1}
+          className={tabClassName(selected === t.id)}
+          onClick={() => onSelect(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function TabPanel({
+  idPrefix,
+  selected,
+  className = '',
+  children,
+}: {
+  idPrefix: string;
+  selected: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="tabpanel"
+      id={`${idPrefix}-panel`}
+      aria-labelledby={`${idPrefix}-tab-${selected}`}
+      className={className}
+    >
+      {children}
+    </div>
   );
 }

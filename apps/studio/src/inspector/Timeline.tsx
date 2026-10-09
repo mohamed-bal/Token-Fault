@@ -96,12 +96,12 @@ export function Timeline({
         width={width}
         height={HEIGHT}
         role="img"
-        aria-label={`Timeline of ${events.length} events over ${ms(end)}`}
+        aria-label={`Timeline of ${events.length} SSE events over ${ms(end)}${annotations.length > 0 ? `; ${annotations.length} injected fault${annotations.length === 1 ? '' : 's'} (amber markers)` : ''}${termination && termination.kind !== 'eof' && termination.kind !== 'replay-end' ? `; ended by ${termination.kind} at ${ms(termination.atMs)} (red line)` : ''}`}
         className="block cursor-crosshair"
         onClick={(e) => handleClick(e.clientX, e.currentTarget.getBoundingClientRect())}
       >
         <text x={PAD_X} y={11} className="fill-faint text-[10px]">
-          events
+          SSE events
         </text>
         <text x={PAD_X} y={GAP_LABEL_Y} className="fill-faint text-[10px]">
           gap since previous event {maxGap > 0 ? `(max ${ms(maxGap)})` : ''}
@@ -185,6 +185,30 @@ export function Timeline({
           </g>
         )}
       </svg>
+      <ul
+        className="flex flex-wrap gap-x-3 gap-y-0.5 px-1 pt-1 text-[10.5px] text-faint"
+        aria-label="Timeline legend"
+      >
+        {LEGEND.map(([label, color]) => (
+          <li key={label} className="flex items-center gap-1">
+            <span aria-hidden className="inline-block h-2.5 w-0.5" style={{ background: color }} />
+            {label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
+
+const LEGEND: readonly (readonly [string, string])[] = [
+  ['content delta', '#7c9cff'],
+  ['tool-call delta', '#c084fc'],
+  ['finish_reason', '#2dd4bf'],
+  ['[DONE]', '#4ade80'],
+  ['metadata only', '#5d6573'],
+  ['unrecognised event', '#fbbf24'],
+  ['invalid JSON', '#fb923c'],
+  ['error event', '#f87171'],
+  ['injected fault (marker)', '#fbbf24'],
+  ['termination (line)', '#f87171'],
+];

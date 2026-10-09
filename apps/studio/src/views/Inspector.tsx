@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SessionDetail } from '@tokenfault/shared';
 import { api } from '../api';
-import { Badge, EmptyState, ErrorBanner, Spinner, Stat } from '../components/ui';
+import { Badge, EmptyState, ErrorBanner, Spinner, Stat, TabPanel, Tabs } from '../components/ui';
 import { OUTCOME_LABEL, bytes, ms, outcomeTone, shortId } from '../format';
 import type { LiveState } from '../live';
 import type { Route } from '../router';
@@ -113,7 +113,9 @@ function SessionView({ detail }: { detail: SessionDetail }) {
           <span data-testid="session-outcome">{OUTCOME_LABEL[detail.outcome]}</span>
         </Badge>
         {detail.completionSignal && (
-          <span className="text-[11px] text-faint">via {detail.completionSignal}</span>
+          <span className="text-[11px] text-faint">
+            completion signal: {detail.completionSignal}
+          </span>
         )}
         {detail.termination && (
           <span className="text-[12px] text-muted" data-testid="session-termination">
@@ -121,9 +123,12 @@ function SessionView({ detail }: { detail: SessionDetail }) {
             {detail.termination.detail && (
               <span className="text-faint"> ({detail.termination.detail})</span>
             )}
+            {detail.annotations.length > 0 && (
+              <span className="text-warn"> · faults injected by TokenFault</span>
+            )}
           </span>
         )}
-        {detail.scenarioId && <Badge tone="warn">{detail.scenarioId}</Badge>}
+        {detail.scenarioId && <Badge tone="warn">fault: {detail.scenarioId}</Badge>}
         {detail.source === 'replay' && (
           <Badge tone="info">replay of {shortId(detail.replayOf ?? '')}</Badge>
         )}
@@ -132,6 +137,7 @@ function SessionView({ detail }: { detail: SessionDetail }) {
             className="flex items-center gap-1.5 text-[11.5px] text-muted"
             title="Prompts and request headers are never included."
           >
+            <span className="sr-only">Prompts and request headers are never included.</span>
             <input
               type="checkbox"
               checked={includePayloads}
@@ -140,15 +146,26 @@ function SessionView({ detail }: { detail: SessionDetail }) {
             />
             include response payloads
           </label>
-          <a
-            className={`btn ${ended ? '' : 'pointer-events-none opacity-50'}`}
-            href={api.recordingUrl(detail.id, includePayloads)}
-            download={`tokenfault-${detail.id}.tfrec.json`}
-            aria-disabled={!ended}
-            data-testid="export-recording"
-          >
-            Export recording
-          </a>
+          {ended ? (
+            <a
+              className="btn"
+              href={api.recordingUrl(detail.id, includePayloads)}
+              download={`tokenfault-${detail.id}.tfrec.json`}
+              data-testid="export-recording"
+            >
+              Export recording
+            </a>
+          ) : (
+            // A disabled link is still keyboard-activatable; a disabled button is not.
+            <button
+              type="button"
+              className="btn opacity-50"
+              disabled
+              data-testid="export-recording"
+            >
+              Export recording
+            </button>
+          )}
         </div>
       </div>
 
@@ -180,7 +197,7 @@ function SessionView({ detail }: { detail: SessionDetail }) {
         <span>
           usage:{' '}
           {m.usage
-            ? `${m.usage.promptTokens ?? '—'} / ${m.usage.completionTokens ?? '—'} / ${m.usage.totalTokens ?? '—'} (reported by API)`
+            ? `${m.usage.promptTokens ?? '—'} / ${m.usage.completionTokens ?? '—'} / ${m.usage.totalTokens ?? '—'} (as reported in the stream, not measured${detail.source === 'replay' ? '; replayed' : ''})`
             : 'not reported'}
         </span>
         {detail.truncated && <span className="text-warn">capture truncated (limits reached)</span>}
@@ -199,25 +216,18 @@ function SessionView({ detail }: { detail: SessionDetail }) {
       </div>
 
       <div className="panel flex min-h-0 flex-1 flex-col">
-        <div
+        <Tabs
+          idPrefix="session"
+          label="Session data"
           className="flex gap-1 border-b border-line px-2 py-1.5"
-          role="tablist"
-          aria-label="Session data"
-        >
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              className={`rounded px-2.5 py-1 text-[12px] ${tab === t.id ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg'}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="min-h-0 flex-1">
+          tabs={tabs}
+          selected={tab}
+          onSelect={setTab}
+          tabClassName={(sel) =>
+            `rounded px-2.5 py-1 text-[12px] ${sel ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg'}`
+          }
+        />
+        <TabPanel idPrefix="session" selected={tab} className="min-h-0 flex-1">
           {tab === 'events' && (
             <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(320px,42%)] max-xl:grid-cols-1">
               <div className="min-w-0 border-r border-line">
@@ -257,6 +267,11 @@ function SessionView({ detail }: { detail: SessionDetail }) {
                             className={`tabular-nums ${gap !== null && m.eventGaps && gap >= Math.max(200, m.eventGaps.p95Ms * 3) ? 'text-warn' : 'text-muted'}`}
                           >
                             {gap === null ? '—' : ms(gap)}
+                            {gap !== null &&
+                              m.eventGaps &&
+                              gap >= Math.max(200, m.eventGaps.p95Ms * 3) && (
+                                <span className="sr-only"> (long gap)</span>
+                              )}
                           </span>
                           <span className={st.text}>{st.label}</span>
                           <span className="truncate">{eventSummary(e)}</span>
@@ -288,7 +303,7 @@ function SessionView({ detail }: { detail: SessionDetail }) {
           {tab === 'faults' && (
             <FaultsPanel annotations={detail.annotations} faults={detail.faults} />
           )}
-        </div>
+        </TabPanel>
       </div>
     </div>
   );

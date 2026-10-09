@@ -90,7 +90,7 @@ export function FaultLab({ activeFaults, onProbe, probing }: Props) {
           )
         }
       >
-        <div className="p-3 text-[12px]" data-testid="active-faults">
+        <div className="p-3 text-[12px]" data-testid="active-faults" aria-live="polite">
           {activeFaults ? (
             <div className="space-y-2">
               <div>
@@ -156,6 +156,12 @@ export function FaultLab({ activeFaults, onProbe, probing }: Props) {
                     Apply to all requests
                   </button>
                 </div>
+                {!proxyOk && (
+                  <p className="text-[11px] text-faint">
+                    Shapes generated content, so it only works on the mock server (
+                    <code className="font-mono">tokenfault mock --scenario {s.id}</code>).
+                  </p>
+                )}
               </article>
             );
           })}
@@ -232,6 +238,7 @@ export function FaultLab({ activeFaults, onProbe, probing }: Props) {
                         {p.unit ? ` (${p.unit})` : ''}
                         {p.optional ? ' · optional' : ''}
                       </span>
+                      <span className="sr-only">{p.description}</span>
                       {p.kind === 'enum' ? (
                         <select
                           className="input"
