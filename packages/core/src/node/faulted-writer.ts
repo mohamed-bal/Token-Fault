@@ -5,7 +5,7 @@
  */
 import type { ServerResponse } from 'node:http';
 import { FrameClassifier } from '../faults/classify.js';
-import { executeFaultActions } from '../faults/executor.js';
+import { WaitPacer, executeFaultActions } from '../faults/executor.js';
 import type { FaultSink } from '../faults/executor.js';
 import type { FaultPlanner } from '../faults/planner.js';
 import type { DisconnectMode, FaultType } from '../faults/schema.js';
@@ -28,6 +28,8 @@ export class FaultedResponseWriter {
   private timer: NodeJS.Timeout | null = null;
   private disconnectedFlag = false;
   private readonly sink: FaultSink;
+  /** One pacer per response, so timer overshoot is compensated across frames. */
+  private readonly pacer = new WaitPacer();
   /** Frame-level faults are applied only to SSE bodies; otherwise bytes pass through untouched. */
   private readonly framing: boolean;
 
@@ -97,7 +99,12 @@ export class FaultedResponseWriter {
       if (!(await this.runFrame(frame.bytes))) return false;
     }
     if (this.disconnectedFlag || this.signal.aborted) return false;
-    const result = await executeFaultActions(this.planner.planEnd(), this.sink, this.signal);
+    const result = await executeFaultActions(
+      this.planner.planEnd(),
+      this.sink,
+      this.signal,
+      this.pacer,
+    );
     return result === 'open';
   }
 
@@ -109,7 +116,7 @@ export class FaultedResponseWriter {
   private async runFrame(bytes: Uint8Array): Promise<boolean> {
     if (this.disconnectedFlag || this.signal.aborted) return false;
     const actions = this.planner.planFrame(this.classifier.classify(bytes));
-    const result = await executeFaultActions(actions, this.sink, this.signal);
+    const result = await executeFaultActions(actions, this.sink, this.signal, this.pacer);
     return result === 'open';
   }
 

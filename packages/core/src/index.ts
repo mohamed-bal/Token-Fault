@@ -60,7 +60,7 @@ export type { FaultAction, FrameInfo, PreResponsePlan } from './faults/planner.j
 export { selectFaults } from './faults/selection.js';
 export type { FaultHeaderInput, FaultSelection } from './faults/selection.js';
 export { FrameClassifier } from './faults/classify.js';
-export { executeFaultActions, sleep } from './faults/executor.js';
+export { WaitPacer, executeFaultActions, sleep } from './faults/executor.js';
 export type { ExecutionResult, FaultSink } from './faults/executor.js';
 export { deriveSeed, mulberry32, randomInt } from './faults/rng.js';
 export type { Rng } from './faults/rng.js';

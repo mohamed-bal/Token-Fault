@@ -5,7 +5,7 @@ import type { FaultAction } from '../src/faults/planner.js';
 import { FaultProfileSchema, parseFaultProfile } from '../src/faults/schema.js';
 import type { FaultProfileInput } from '../src/faults/schema.js';
 import { FrameClassifier } from '../src/faults/classify.js';
-import { executeFaultActions, sleep } from '../src/faults/executor.js';
+import { WaitPacer, executeFaultActions, sleep } from '../src/faults/executor.js';
 import type { FaultSink } from '../src/faults/executor.js';
 import { SseDecoder } from '../src/sse/decoder.js';
 import { interpretChatEventData } from '../src/openai/chat-stream.js';
@@ -360,5 +360,63 @@ describe('executor', () => {
     expect(await sleep(10, c.signal)).toBe(false);
     expect(await sleep(0)).toBe(true);
     expect(await sleep(1)).toBe(true);
+  });
+});
+
+describe('WaitPacer (coarse timers)', () => {
+  /** Simulates a platform where every timer fires 15.6 ms late (Windows' default resolution). */
+  function coarseClock() {
+    let t = 0;
+    let calls = 0;
+    return {
+      sleeps: () => calls / 2,
+      elapsed: () => t,
+      clock: () => {
+        // Called once before and once after each real sleep.
+        if (calls++ % 2 === 1) t += 15.6;
+        return t;
+      },
+    };
+  }
+
+  it('keeps a run of 1 ms waits on schedule instead of paying the timer granularity each time', async () => {
+    const c = coarseClock();
+    const pacer = new WaitPacer(c.clock);
+    for (let i = 0; i < 200; i++) expect(await pacer.wait(1)).toBe(true);
+    // Without compensation: 200 sleeps × 15.6 ms ≈ 3.1 s for 200 ms of configured delay.
+    expect(c.sleeps()).toBeLessThanOrEqual(Math.ceil(200 / 15.6) + 1);
+    expect(c.elapsed()).toBeGreaterThanOrEqual(180);
+    expect(c.elapsed()).toBeLessThanOrEqual(220);
+  });
+
+  it('still sleeps for long waits and carries at most 50 ms of overshoot', async () => {
+    let t = 0;
+    let n = 0;
+    // One huge overshoot (e.g. a GC pause) must not swallow a later deliberate stall.
+    const pacer = new WaitPacer(() => (n++ === 1 ? (t += 500) : t));
+    await pacer.wait(1);
+    const before = n;
+    await pacer.wait(60);
+    expect(n).toBe(before + 2); // slept for the 10 ms not covered by the 50 ms cap
+  });
+
+  it('stops when aborted, including during a paid-off wait', async () => {
+    const controller = new AbortController();
+    const c = coarseClock();
+    const pacer = new WaitPacer(c.clock);
+    await pacer.wait(1, controller.signal);
+    controller.abort();
+    expect(await pacer.wait(1, controller.signal)).toBe(false);
+  });
+
+  it('keeps writes separated by an event-loop turn when a wait is paid off', async () => {
+    const c = coarseClock();
+    const pacer = new WaitPacer(c.clock);
+    const order: string[] = [];
+    await pacer.wait(1); // creates ~14.6 ms of credit
+    setImmediate(() => order.push('io-turn'));
+    await pacer.wait(1); // paid off: must still yield
+    order.push('after-wait');
+    expect(order).toEqual(['io-turn', 'after-wait']);
   });
 });
