@@ -186,9 +186,12 @@ try {
     !recordingText.includes('TokenFault mock response') &&
       JSON.parse(recordingText).payloads.included === false,
   );
+  const overwrite = run(['inspect', '--url', endpoint, '--record', recordPath]);
   check(
-    'recording refuses to overwrite',
-    run(['inspect', '--url', endpoint, '--record', recordPath]).code === 1,
+    'recording refuses to overwrite, before sending the request',
+    overwrite.code === 1 &&
+      overwrite.stderr.includes('Recording file already exists') &&
+      overwrite.stdout === '',
   );
 
   const rateLimited = run(['inspect', '--url', endpoint, '--scenario', 'rate-limit-429', '--json']);

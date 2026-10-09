@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import type { OutgoingHttpHeaders } from 'node:http';
 import { createRecording, serializeRecording, sessionDetail } from '@tokenfault/core';
@@ -57,6 +58,10 @@ Exit codes: 0 stream completed, 1 error, 2 usage error, 3 stream did not complet
 (HTTP error, incomplete stream, in-stream error).
 `;
 
+function recordingExists(file: string): string {
+  return `Recording file already exists: ${file}. Recordings are never overwritten; choose another path or delete the file.`;
+}
+
 export async function runInspect(argv: readonly string[]): Promise<number> {
   const { values } = parse(argv, {
     url: { type: 'string' },
@@ -85,6 +90,9 @@ export async function runInspect(argv: readonly string[]): Promise<number> {
     throw new UsageError('Use either --body or --body-file, not both.');
   if (values['record-payloads'] && !values.record)
     throw new UsageError('--record-payloads requires --record <path>.');
+  // Fail before contacting the upstream; the write below still uses 'wx' against races.
+  if (values.record && existsSync(values.record))
+    throw new CliError(recordingExists(values.record));
 
   const headers: OutgoingHttpHeaders = { accept: 'text/event-stream' };
   for (const raw of values.header ?? []) {
@@ -217,6 +225,8 @@ export async function runInspect(argv: readonly string[]): Promise<number> {
       try {
         await writeFile(values.record, serializeRecording(recording), { flag: 'wx', mode: 0o600 });
       } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST')
+          throw new CliError(recordingExists(values.record));
         throw new CliError(
           `Cannot write recording: ${error instanceof Error ? error.message : String(error)}`,
         );
