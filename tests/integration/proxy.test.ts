@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import type { IncomingMessage } from 'node:http';
 import { connect } from 'node:net';
@@ -739,5 +740,19 @@ describe('event-loop fairness', () => {
     expect(result.snapshot.outcome).toBe('completed');
     // The health check must be served while the big stream is still in flight.
     expect(healthMs).toBeLessThan(result.termination.atMs * 0.5);
+  });
+});
+
+describe('server info', () => {
+  it('reports the proxy package version when no version is passed', async () => {
+    const proxy = await startProxy({ target: 'http://127.0.0.1:9' });
+    try {
+      const pkg = JSON.parse(
+        await readFile(new URL('../../packages/proxy/package.json', import.meta.url), 'utf8'),
+      ) as { version: string };
+      expect((await proxy.control.info()).version).toBe(pkg.version);
+    } finally {
+      await proxy.close();
+    }
   });
 });

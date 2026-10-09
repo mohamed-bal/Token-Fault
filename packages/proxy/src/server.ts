@@ -3,6 +3,7 @@
  * Fastify instance on one port.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import Fastify from 'fastify';
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -27,6 +28,18 @@ import { ReplayManager } from './replay.js';
 import { SessionStore } from './session-store.js';
 import { StaticRoot, openStaticFile } from './static-files.js';
 import { parseTarget } from './target.js';
+
+/** This package's version, from its manifest (`src/` and `dist/` both sit next to it). */
+const PACKAGE_VERSION: string = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version?: unknown;
+    };
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 export interface TokenFaultServerOptions {
   /** Upstream base URL (fixed for the server's lifetime). */
@@ -277,7 +290,7 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
     );
   }
   const limits: Limits = { ...DEFAULT_LIMITS, ...options.limits };
-  const version = options.version ?? '0.1.0';
+  const version = options.version ?? PACKAGE_VERSION;
   let active = resolveInitialFaults(options);
   const controlToken =
     options.controlToken === undefined ? generateControlToken() : options.controlToken;
