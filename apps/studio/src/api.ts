@@ -4,6 +4,7 @@
  */
 import type {
   ActiveFaults,
+  AuthStatus,
   FaultTypeDescriptor,
   ProbeRequest,
   ProbeResponse,
@@ -16,6 +17,7 @@ import type {
 } from '@tokenfault/shared';
 
 export const API = '/__tokenfault/api';
+export const UNAUTHORIZED_EVENT = 'tokenfault:unauthorized';
 
 export class ApiError extends Error {
   constructor(
@@ -43,6 +45,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     );
   }
   const text = await res.text();
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    // Session expired or never established: the app shell switches to the sign-in screen.
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {
@@ -56,6 +62,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
+  authStatus: () => call<AuthStatus>('GET', '/auth/status'),
+  login: (token: string) => call<{ authenticated: boolean }>('POST', '/auth/login', { token }),
+  logout: () => call<void>('POST', '/auth/logout'),
   info: () => call<ServerInfo>('GET', '/info'),
   scenarios: () =>
     call<{ scenarios: ScenarioDescriptor[]; faultTypes: FaultTypeDescriptor[] }>(

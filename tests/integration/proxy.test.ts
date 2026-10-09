@@ -4,7 +4,6 @@ import { connect } from 'node:net';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { ConfigError, createTokenFaultServer } from '@tokenfault/proxy';
 import {
-  ControlClient,
   startProxy,
   startStack,
   streamChatCompletion,
@@ -232,6 +231,7 @@ describe('proxy + mock: full lifecycle', () => {
     const controller = new AbortController();
     const res = await fetch(`${stack.proxy.url}/__tokenfault/api/live`, {
       signal: controller.signal,
+      headers: { authorization: `Bearer ${stack.proxy.server.controlToken}` },
     });
     expect(res.headers.get('content-type')).toContain('text/event-stream');
     const reader = res.body!.getReader();
@@ -539,6 +539,9 @@ describe('proxy security boundaries', () => {
       await proxy.close();
     });
 
+    const token = (): Record<string, string> => ({
+      Authorization: `Bearer ${proxy.server.controlToken}`,
+    });
     const raw = (method: string, path: string, headers: Record<string, string>, body = '') =>
       new Promise<number>((resolve) => {
         const { port } = new URL(proxy.url);
@@ -605,25 +608,30 @@ describe('proxy security boundaries', () => {
         await raw(
           'PUT',
           '/__tokenfault/api/faults',
-          { Host: 'localhost', 'Content-Type': 'application/json' },
+          { Host: 'localhost', 'Content-Type': 'application/json', ...token() },
           '{"scenarioId":"stream-stall"}',
         ),
       ).toBe(200);
-      expect(await raw('DELETE', '/__tokenfault/api/faults', { Host: 'localhost' })).toBe(204);
+      expect(
+        await raw('DELETE', '/__tokenfault/api/faults', { Host: 'localhost', ...token() }),
+      ).toBe(204);
     });
 
     it('never sends CORS headers and sets security headers', async () => {
       const res = await fetch(`${proxy.url}/__tokenfault/api/info`, {
-        headers: { origin: 'https://evil.example' },
+        headers: { origin: 'https://evil.example', ...token() },
       });
       expect(res.headers.get('access-control-allow-origin')).toBeNull();
       expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-      const info = await new ControlClient(proxy.url).info();
+      const info = await proxy.control.info();
       expect(info.target).toBe('http://127.0.0.1:9');
     });
 
     it('unknown control paths are never forwarded', async () => {
-      expect(await raw('GET', '/__tokenfault/anything', { Host: 'localhost' })).toBe(404);
+      expect(await raw('GET', '/__tokenfault/anything', { Host: 'localhost' })).toBe(401);
+      expect(await raw('GET', '/__tokenfault/anything', { Host: 'localhost', ...token() })).toBe(
+        404,
+      );
     });
   });
 });

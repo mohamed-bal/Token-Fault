@@ -40,9 +40,28 @@ Privacy and recording:
 
 Other:
   --no-studio                 Do not serve the Studio UI
+
+Control API / Studio access:
+  A random control token is generated on every start and printed below. Sign in to the
+  Studio with it; scripts send it as "Authorization: Bearer <token>".
+  TOKENFAULT_CONTROL_TOKEN    Environment variable: use this token instead (≥ 32 printable chars)
+  --no-control-auth           Disable control-plane authentication (any local process can then
+                              read captured responses and change faults)
   --log                       Log requests (credentials and query values redacted)
   -h, --help                  Show this help
 `;
+
+/** Reads TOKENFAULT_CONTROL_TOKEN; tokens are never accepted as command-line values. */
+function controlTokenFromEnv(): string | null {
+  const value = process.env['TOKENFAULT_CONTROL_TOKEN'];
+  if (value === undefined || value === '') return null;
+  if (value.length < 32 || !/^[\x21-\x7e]+$/.test(value)) {
+    throw new UsageError(
+      'TOKENFAULT_CONTROL_TOKEN must be at least 32 printable characters without spaces.',
+    );
+  }
+  return value;
+}
 
 export async function runProxy(argv: readonly string[]): Promise<number> {
   const { values } = parse(argv, {
@@ -60,6 +79,7 @@ export async function runProxy(argv: readonly string[]): Promise<number> {
     'record-max-files': { type: 'string' },
     'record-max-age-days': { type: 'string' },
     'no-studio': { type: 'boolean' },
+    'no-control-auth': { type: 'boolean' },
     log: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
   });
@@ -92,6 +112,7 @@ export async function runProxy(argv: readonly string[]): Promise<number> {
     3_650,
   );
   const studioDir = values['no-studio'] ? null : findStudioDir();
+  const envToken = values['no-control-auth'] ? null : controlTokenFromEnv();
 
   let mock: RunningMockLlm | null = null;
   let target = values.target ?? '';
@@ -112,6 +133,11 @@ export async function runProxy(argv: readonly string[]): Promise<number> {
       recordDir: values['record-dir'] ? path.resolve(values['record-dir']) : null,
       recordPayloads: values['record-payloads'] === true,
       studioDir,
+      ...(values['no-control-auth']
+        ? { controlToken: null }
+        : envToken
+          ? { controlToken: envToken }
+          : {}),
       logger: values.log === true,
       version: cliVersion(),
       ...(headersTimeoutMs !== undefined ? { headersTimeoutMs } : {}),
@@ -148,6 +174,15 @@ export async function runProxy(argv: readonly string[]): Promise<number> {
     `  payloads ${values['no-capture-payloads'] ? 'not captured' : 'captured in memory only'}${values['record-dir'] ? `; recordings → ${path.resolve(values['record-dir'])} (${values['record-payloads'] ? 'with' : 'without'} payloads)` : ''}`,
   );
   if (values.scenario) out(`  faults   scenario ${values.scenario} on every request`);
+  if (server.controlToken) {
+    out(
+      `  control token ${server.controlToken}  ${style.dim('(Studio sign-in / Authorization: Bearer; not logged)')}`,
+    );
+  } else {
+    warn(
+      'control-plane authentication is disabled (--no-control-auth): any local process can read captured responses and change faults.',
+    );
+  }
   if (values['allow-remote']) {
     warn(
       'the proxy data path is reachable from the network (--allow-remote): any host that can reach this port can send requests to your upstream through it.',

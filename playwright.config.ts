@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_CONTROL_TOKEN } from './tests/e2e/token';
 
 const PORT = Number(process.env['TOKENFAULT_E2E_PORT'] ?? 8790);
 
@@ -25,6 +26,7 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}/__tokenfault/api/health`,
     reuseExistingServer: false,
     timeout: 30_000,
+    env: { TOKENFAULT_CONTROL_TOKEN: E2E_CONTROL_TOKEN },
     stdout: 'pipe',
     stderr: 'pipe',
   },

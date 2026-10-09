@@ -1,5 +1,36 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { E2E_CONTROL_TOKEN } from './token.js';
+
+async function signIn(page: Page, path = '/__tokenfault/studio/'): Promise<void> {
+  await page.goto(path);
+  await page.getByTestId('control-token').fill(E2E_CONTROL_TOKEN);
+  await page.getByTestId('sign-in').click();
+  await expect(page.getByRole('status').filter({ hasText: 'Live' })).toBeVisible();
+}
+
+test('the Studio requires the control token and keeps it out of browser storage', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/__tokenfault/studio/');
+  await page.getByTestId('control-token').fill('definitely-not-the-token-0123456789');
+  await page.getByTestId('sign-in').click();
+  await expect(page.getByRole('alert')).toContainText('Invalid control token');
+  await page.getByTestId('control-token').fill(E2E_CONTROL_TOKEN);
+  await page.getByTestId('sign-in').click();
+  await expect(page.getByRole('status').filter({ hasText: 'Live' })).toBeVisible();
+  const storage = await page.evaluate(
+    () =>
+      JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }) + document.cookie,
+  );
+  expect(storage).not.toContain(E2E_CONTROL_TOKEN);
+  const cookies = await context.cookies();
+  const session = cookies.find((c) => c.name === 'tf_session');
+  expect(session).toMatchObject({ httpOnly: true, sameSite: 'Strict', path: '/__tokenfault' });
+  expect(page.url()).not.toContain(E2E_CONTROL_TOKEN);
+});
 
 /**
  * The v0.1 release journey, end to end:
@@ -13,10 +44,10 @@ test('inspect, break, record and replay a stream from the Studio', async ({ page
     if (m.type() === 'error') consoleErrors.push(m.text());
   });
 
-  // 1–3. Open the Studio served by the proxy (which fronts the embedded mock).
-  await page.goto('/__tokenfault/studio/');
-  await expect(page.getByText('No sessions yet')).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'Live' })).toBeVisible();
+  // 1–3. Open the Studio served by the proxy (which fronts the embedded mock) and sign in.
+  await signIn(page);
+  await page.getByRole('link', { name: 'Overview' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Recent sessions' })).toBeVisible();
 
   // 4. Send a test request through the proxy.
   await page.getByTestId('send-test-request').click();
@@ -85,7 +116,7 @@ test('inspect, break, record and replay a stream from the Studio', async ({ page
 });
 
 test('server-wide faults can be applied and cleared from the Fault Lab', async ({ page }) => {
-  await page.goto('/__tokenfault/studio/#/faults');
+  await signIn(page, '/__tokenfault/studio/#/faults');
   const card = page.getByTestId('scenario-rate-limit-429');
   await card.getByRole('button', { name: 'Apply to all requests' }).click();
   await expect(page.getByTestId('active-faults')).toContainText('rate-limit-429');

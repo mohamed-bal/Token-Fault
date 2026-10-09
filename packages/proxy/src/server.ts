@@ -10,6 +10,7 @@ import { findScenario, parseFaultProfile } from '@tokenfault/core';
 import type { FaultProfileInput, FaultSelection } from '@tokenfault/core';
 import { isLoopbackAddress, isLoopbackBindHost, isLoopbackHostHeader } from '@tokenfault/core/node';
 import {
+  API_PREFIX,
   CONTROL_PREFIX,
   DEFAULT_LIMITS,
   DEFAULT_PROXY_PORT,
@@ -18,6 +19,7 @@ import {
   redactPathQuery,
 } from '@tokenfault/shared';
 import type { Limits } from '@tokenfault/shared';
+import { ControlAuth, MIN_TOKEN_LENGTH, generateControlToken } from './control-auth.js';
 import { registerControlApi, toActiveFaults } from './control-api.js';
 import { handleProxyRequest } from './proxy-handler.js';
 import { SessionRecorder } from './recorder.js';
@@ -50,6 +52,11 @@ export interface TokenFaultServerOptions {
   /** Directory of the built Studio bundle. Studio is disabled when unset. */
   readonly studioDir?: string | null;
   readonly limits?: Partial<Limits>;
+  /**
+   * Control-API token. `undefined` (default): a random token is generated for this run.
+   * A string (≥ 32 chars): use it. `null`: disable control-plane authentication.
+   */
+  readonly controlToken?: string | null;
   readonly logger?: boolean;
   /** Where log lines go when `logger` is enabled (default: stdout). Useful for embedding and tests. */
   readonly logDestination?: { write(line: string): unknown };
@@ -121,6 +128,13 @@ const OptionsSchema = z.strictObject({
         .optional(),
     })
     .optional(),
+  controlToken: z
+    .string()
+    .min(MIN_TOKEN_LENGTH)
+    .max(512)
+    .regex(/^[\x21-\x7e]+$/, 'printable ASCII without spaces')
+    .nullable()
+    .optional(),
   logger: z.boolean().optional(),
   logDestination: z
     .custom<{ write(line: string): unknown }>(
@@ -147,6 +161,8 @@ export interface TokenFaultServer {
   readonly url: string | null;
   /** Credential-free display form of the upstream target. */
   readonly targetDisplay: string;
+  /** The control token in effect, or `null` when control-plane authentication is disabled. */
+  readonly controlToken: string | null;
   setActiveFaults(selection: FaultSelection | null): void;
 }
 
@@ -214,6 +230,23 @@ function isControlRequest(rawUrl: string, routeUrl: string | undefined): boolean
   }
 }
 
+/** Control-plane routes reachable without authentication. None of them exposes captured data. */
+function isAuthExempt(method: string, routeUrl: string | undefined): boolean {
+  if (routeUrl === undefined) return false;
+  if (routeUrl === STUDIO_PREFIX || routeUrl.startsWith(`${STUDIO_PREFIX}/`)) return true;
+  if (
+    method === 'GET' &&
+    (routeUrl === `${API_PREFIX}/health` || routeUrl === `${API_PREFIX}/auth/status`)
+  )
+    return true;
+  if (
+    method === 'POST' &&
+    (routeUrl === `${API_PREFIX}/auth/login` || routeUrl === `${API_PREFIX}/auth/logout`)
+  )
+    return true;
+  return false;
+}
+
 function isAllowedOrigin(origin: string, port: number | null): boolean {
   let parsed: URL;
   try {
@@ -246,6 +279,9 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
   const limits: Limits = { ...DEFAULT_LIMITS, ...options.limits };
   const version = options.version ?? '0.1.0';
   let active = resolveInitialFaults(options);
+  const controlToken =
+    options.controlToken === undefined ? generateControlToken() : options.controlToken;
+  const auth = controlToken === null ? null : new ControlAuth(controlToken);
 
   const app = Fastify({
     logger: options.logger
@@ -403,6 +439,21 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
           );
       }
     }
+    if (
+      auth &&
+      !isAuthExempt(request.method, request.routeOptions.url) &&
+      !auth.isAuthenticated(request.headers)
+    ) {
+      return reply
+        .code(401)
+        .header('www-authenticate', 'Bearer realm="tokenfault"')
+        .send(
+          errorBody(
+            'tokenfault_unauthorized',
+            'Control API requires the control token (Authorization: Bearer <token>) or a Studio sign-in.',
+          ),
+        );
+    }
     return undefined;
   });
 
@@ -445,6 +496,7 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
       store.announceFaults(toActiveFaults(selection));
     },
     selfOrigin: () => listeningUrl,
+    auth,
   });
 
   if (options.studioDir) {
@@ -511,6 +563,7 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
       return listeningUrl;
     },
     targetDisplay: target.display,
+    controlToken,
     async listen() {
       await app.listen({ host, port: options.port ?? DEFAULT_PROXY_PORT });
       const address = app.server.address();

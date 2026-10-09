@@ -49,20 +49,38 @@ function start(args) {
     child.stderr.on('data', (d) => (output += d.toString()));
     child.once('exit', (code) => reject(new Error(`exited early (${code}):\n${output}`)));
   });
+  // Resolves { code, signal }. On Windows, kill() terminates unconditionally (no signal
+  // handler runs), so graceful-shutdown exit codes can only be asserted on POSIX.
   const stop = (signal = 'SIGINT') =>
     new Promise((resolve) => {
       const timer = setTimeout(() => {
         child.kill('SIGKILL');
-        resolve(-1);
+        resolve({ code: -1, signal: 'timeout' });
       }, 8_000);
-      child.once('exit', (code) => {
+      child.once('exit', (code, sig) => {
         clearTimeout(timer);
-        resolve(code);
+        resolve({ code, signal: sig });
       });
       child.kill(signal);
     });
-  return { url, stop, output: () => output };
+  const waitFor = (re, ms = 5_000) =>
+    new Promise((resolve, reject) => {
+      const deadline = Date.now() + ms;
+      const poll = () => {
+        const m = re.exec(output);
+        if (m) resolve(m);
+        else if (Date.now() > deadline)
+          reject(new Error(`timed out waiting for ${re}:\n${output}`));
+        else setTimeout(poll, 20);
+      };
+      poll();
+    });
+  return { url, stop, waitFor, output: () => output };
 }
+
+const WIN = process.platform === 'win32';
+/** Graceful exit (code 0) on POSIX; on Windows only that the process terminated. */
+const exitedGracefully = (r) => (WIN ? r.code !== null || r.signal !== null : r.code === 0);
 
 const tmp = await mkdtemp(path.join(tmpdir(), 'tokenfault-smoke-'));
 try {
@@ -122,6 +140,16 @@ try {
   // Proxy + embedded mock
   const proxy = start(['proxy', '--mock', '--port', '0']);
   const proxyUrl = await proxy.url;
+  const [, controlToken] = await proxy.waitFor(/control token (\S+)/);
+  check('proxy prints a control token', /^[A-Za-z0-9_-]{43}$/.test(controlToken));
+  const infoNoToken = await fetch(`${proxyUrl}/__tokenfault/api/info`);
+  const infoWithToken = await fetch(`${proxyUrl}/__tokenfault/api/info`, {
+    headers: { authorization: `Bearer ${controlToken}` },
+  });
+  check(
+    'control API requires the printed token',
+    infoNoToken.status === 401 && infoWithToken.status === 200,
+  );
   check('proxy --mock starts', /^http:\/\/127\.0\.0\.1:\d+$/.test(proxyUrl), proxyUrl);
   const endpoint = `${proxyUrl}/v1/chat/completions`;
 
@@ -176,7 +204,11 @@ try {
   );
 
   const proxyExit = await proxy.stop('SIGINT');
-  check('proxy shuts down gracefully on SIGINT', proxyExit === 0, `exit ${proxyExit}`);
+  check(
+    'proxy shuts down gracefully on SIGINT',
+    exitedGracefully(proxyExit),
+    JSON.stringify(proxyExit),
+  );
   check('inspect against a stopped proxy exits 1', run(['inspect', '--url', endpoint]).code === 1);
 
   // Replay
@@ -200,7 +232,7 @@ try {
       servedReport.metrics.eventCount === 5 &&
       servedReport.termination.kind === 'upstream-reset',
   );
-  check('replay server shuts down on SIGTERM', (await served.stop('SIGTERM')) === 0);
+  check('replay server shuts down on SIGTERM', exitedGracefully(await served.stop('SIGTERM')));
 
   // Standalone mock
   const mock = start(['mock', '--port', '0', '--scenario', 'stream-stall']);
@@ -210,12 +242,12 @@ try {
     'mock --scenario applies to every request',
     stalled.code === 0 && JSON.parse(stalled.stdout).metrics.eventGaps.maxMs >= 3900,
   );
-  check('mock shuts down on SIGINT', (await mock.stop()) === 0);
+  check('mock shuts down on SIGINT', exitedGracefully(await mock.stop()));
 } catch (error) {
   failed = true;
   console.error(error);
 } finally {
-  await rm(tmp, { recursive: true, force: true });
+  await rm(tmp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }
 
 console.log(`\n${results.filter((r) => r.ok).length}/${results.length} smoke checks passed`);

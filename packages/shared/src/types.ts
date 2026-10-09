@@ -333,6 +333,8 @@ export interface ServerInfo {
   /** Upstream target without credentials, query or fragment. */
   readonly target: string;
   readonly payloadCapture: boolean;
+  /** Whether the control API requires the control token / a Studio sign-in. */
+  readonly controlAuth: boolean;
   readonly recording: { readonly enabled: boolean; readonly includePayloads: boolean };
   readonly activeFaults: ActiveFaults | null;
   readonly limits: {
@@ -346,6 +348,11 @@ export interface ActiveFaults {
   readonly scenarioId: string | null;
   readonly faults: readonly FaultSpecJson[];
   readonly seed: number;
+}
+
+export interface AuthStatus {
+  readonly required: boolean;
+  readonly authenticated: boolean;
 }
 
 export interface ProbeRequest {
@@ -401,6 +408,7 @@ export type LiveMessage =
 export type TokenFaultErrorCode =
   | 'tokenfault_invalid_request'
   | 'tokenfault_forbidden'
+  | 'tokenfault_unauthorized'
   | 'tokenfault_not_found'
   | 'tokenfault_payload_too_large'
   | 'tokenfault_upstream_unreachable'

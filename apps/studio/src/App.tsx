@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { SignIn } from './components/SignIn';
 import type { ServerInfo } from '@tokenfault/shared';
-import { api, ApiError } from './api';
+import { api, ApiError, UNAUTHORIZED_EVENT } from './api';
 import { Dot, ErrorBanner } from './components/ui';
 import { useLive } from './live';
 import { useRoute } from './router';
@@ -17,7 +18,7 @@ const NAV: readonly { view: View; label: string; hint: string }[] = [
   { view: 'replay', label: 'Replay', hint: 'Replay and import recordings' },
 ];
 
-export function App() {
+function Workspace({ onSignOut }: { onSignOut: (() => void) | null }) {
   const live = useLive();
   const [route, navigate] = useRoute();
   const [info, setInfo] = useState<ServerInfo | null>(null);
@@ -101,6 +102,15 @@ export function App() {
         <div className="mt-auto space-y-1 border-t border-line px-4 py-3 text-[11px] text-faint">
           <div>Inspect · Replay · Break · Harden</div>
           {info && <div className="font-mono">v{info.version}</div>}
+          {onSignOut && (
+            <button
+              type="button"
+              className="text-faint underline-offset-2 hover:text-fg hover:underline"
+              onClick={onSignOut}
+            >
+              Sign out
+            </button>
+          )}
         </div>
       </aside>
 
@@ -190,5 +200,52 @@ export function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+type AuthState = 'checking' | 'signed-out' | 'open' | 'signed-in' | 'unreachable';
+
+/** Auth gate: the workspace (and its live feed) mounts only once the control API is accessible. */
+export function App() {
+  const [auth, setAuth] = useState<AuthState>('checking');
+
+  const check = useCallback(() => {
+    api
+      .authStatus()
+      .then((s) => setAuth(!s.required ? 'open' : s.authenticated ? 'signed-in' : 'signed-out'))
+      .catch(() => setAuth('unreachable'));
+  }, []);
+
+  useEffect(() => {
+    check();
+    const onUnauthorized = (): void => setAuth('signed-out');
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, [check]);
+
+  if (auth === 'checking') return null;
+  if (auth === 'unreachable') {
+    return (
+      <main className="flex h-full items-center justify-center p-6">
+        <div className="panel max-w-md space-y-3 p-6 text-[12px]">
+          <ErrorBanner error="Cannot reach the TokenFault server. Is `tokenfault proxy` still running?" />
+          <button type="button" className="btn" onClick={check}>
+            Retry
+          </button>
+        </div>
+      </main>
+    );
+  }
+  if (auth === 'signed-out') return <SignIn onSignedIn={check} />;
+  return (
+    <Workspace
+      onSignOut={
+        auth === 'signed-in'
+          ? () => {
+              void api.logout().finally(() => setAuth('signed-out'));
+            }
+          : null
+      }
+    />
   );
 }

@@ -24,7 +24,7 @@ beforeAll(async () => {
   workdir = await mkdtemp(path.join(tmpdir(), 'tokenfault-it-'));
 });
 afterAll(async () => {
-  await rm(workdir, { recursive: true, force: true });
+  await rm(workdir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
 describe('automatic session recording', () => {
@@ -127,6 +127,8 @@ describe('replay server', () => {
   });
 });
 
+let canSymlink = false;
+
 describe('Studio static file serving', () => {
   let stack: Stack;
   let outside: string;
@@ -138,7 +140,14 @@ describe('Studio static file serving', () => {
     await writeFile(path.join(studio, 'assets', 'app-abc.js'), 'console.log(1)');
     outside = path.join(workdir, 'secret.txt');
     await writeFile(outside, 'TOP SECRET');
-    await symlink(outside, path.join(studio, 'leak.txt'));
+    // Creating symlinks needs Developer Mode or elevation on Windows; without it the
+    // symlink-escape case is reported as skipped below instead of failing the whole suite.
+    try {
+      await symlink(outside, path.join(studio, 'leak.txt'));
+      canSymlink = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+    }
     stack = await startStack({ proxy: { studioDir: studio } });
   });
   afterAll(async () => {
@@ -171,11 +180,16 @@ describe('Studio static file serving', () => {
     expect((await fetch(`${stack.proxy.url}/__tokenfault/studio/missing.js`)).status).toBe(404);
   });
 
+  it('never follows a symlink out of the root', async (ctx) => {
+    if (!canSymlink) ctx.skip();
+    const response = await rawGet('/__tokenfault/studio/leak.txt');
+    expect(response).not.toContain('TOP SECRET');
+  });
+
   it.each([
     '/__tokenfault/studio/../../../etc/passwd',
     '/__tokenfault/studio/%2e%2e/%2e%2e/secret.txt',
     '/__tokenfault/studio/..%2f..%2fsecret.txt',
-    '/__tokenfault/studio/leak.txt',
     '/__tokenfault/studio/%00index.html',
     '/__tokenfault/studio/..%5c..%5csecret.txt',
   ])('never serves files outside the root: %s', async (target) => {

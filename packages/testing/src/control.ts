@@ -26,13 +26,25 @@ export class ControlApiError extends Error {
 }
 
 export class ControlClient {
-  constructor(private readonly baseUrl: string) {}
+  /**
+   * @param baseUrl Proxy base URL.
+   * @param token Control token (`server.controlToken`). Omit or pass `null` when the server
+   *   runs with control-plane authentication disabled.
+   */
+  constructor(
+    private readonly baseUrl: string,
+    private readonly token: string | null = null,
+  ) {}
+
+  private headers(extra: Record<string, string> = {}): Record<string, string> {
+    return this.token ? { authorization: `Bearer ${this.token}`, ...extra } : extra;
+  }
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const init: RequestInit = { method, headers: {} };
+    const init: RequestInit = { method, headers: this.headers() };
     if (body !== undefined) {
       init.body = JSON.stringify(body);
-      init.headers = { 'content-type': 'application/json' };
+      init.headers = this.headers({ 'content-type': 'application/json' });
     }
     const res = await fetch(`${this.baseUrl}${API_PREFIX}${path}`, init);
     const text = await res.text();
@@ -70,6 +82,7 @@ export class ControlClient {
   async recording(id: string, includePayloads = false): Promise<string> {
     const res = await fetch(
       `${this.baseUrl}${API_PREFIX}/sessions/${encodeURIComponent(id)}/recording?payloads=${String(includePayloads)}`,
+      { headers: this.headers() },
     );
     if (!res.ok) throw new ControlApiError(res.status, await res.text());
     return res.text();

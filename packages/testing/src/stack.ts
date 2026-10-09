@@ -23,7 +23,12 @@ export async function startProxy(
 ): Promise<RunningProxy> {
   const server = createTokenFaultServer({ port: 0, ...options, host: '127.0.0.1' });
   const url = await server.listen();
-  return { url, server, control: new ControlClient(url), close: () => server.close() };
+  return {
+    url,
+    server,
+    control: new ControlClient(url, server.controlToken),
+    close: () => server.close(),
+  };
 }
 
 export interface Stack {

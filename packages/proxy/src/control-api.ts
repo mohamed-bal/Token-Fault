@@ -22,6 +22,7 @@ import type { FaultSelection, Recording } from '@tokenfault/core';
 import { API_PREFIX, SCENARIO_HEADER, SESSION_HEADER, errorBody } from '@tokenfault/shared';
 import type {
   ActiveFaults,
+  AuthStatus,
   Limits,
   ProbeResponse,
   ReplayResponse,
@@ -29,6 +30,8 @@ import type {
   ServerInfo,
   TokenFaultErrorCode,
 } from '@tokenfault/shared';
+import { clearedSessionCookie, sessionCookie } from './control-auth.js';
+import type { ControlAuth } from './control-auth.js';
 import { serveLiveFeed } from './live-feed.js';
 import { ReplayLimitError } from './replay.js';
 import type { ReplayManager } from './replay.js';
@@ -46,6 +49,8 @@ export interface ControlContext {
   setActive(selection: FaultSelection | null): void;
   /** Origin of this server's own listener, used by the probe. `null` until listening. */
   selfOrigin(): string | null;
+  /** Control-plane authentication, or `null` when disabled. */
+  readonly auth: ControlAuth | null;
 }
 
 function fail(
@@ -95,6 +100,8 @@ const FaultsBodySchema = z.strictObject({
   profile: z.unknown().optional(),
 });
 
+const LoginBodySchema = z.strictObject({ token: z.string().min(1).max(512) });
+
 const ProbeBodySchema = z.strictObject({
   model: z.string().min(1).max(256).optional(),
   prompt: z.string().max(2_000).optional(),
@@ -108,6 +115,7 @@ export function registerControlApi(app: FastifyInstance, ctx: ControlContext): v
     version: ctx.version,
     target: ctx.targetDisplay,
     payloadCapture: ctx.store.capturePayloads,
+    controlAuth: ctx.auth !== null,
     recording: ctx.recording,
     activeFaults: toActiveFaults(ctx.getActive()),
     limits: {
@@ -118,6 +126,39 @@ export function registerControlApi(app: FastifyInstance, ctx: ControlContext): v
   }));
 
   app.get(`${API_PREFIX}/health`, () => ({ status: 'ok' }));
+
+  app.get(`${API_PREFIX}/auth/status`, (request): AuthStatus => ({
+    required: ctx.auth !== null,
+    authenticated: ctx.auth === null || ctx.auth.isAuthenticated(request.headers),
+  }));
+
+  app.post(`${API_PREFIX}/auth/login`, { bodyLimit: 4_096 }, (request, reply) => {
+    if (!ctx.auth) return { authenticated: true };
+    const json = parseJson(request.body);
+    const body = json.ok ? LoginBodySchema.safeParse(json.value) : null;
+    if (!body?.success)
+      return fail(reply, 400, 'tokenfault_invalid_request', 'Expected {"token": "..."}.');
+    const result = ctx.auth.login(body.data.token);
+    if (!result.ok) {
+      return result.reason === 'rate-limited'
+        ? fail(
+            reply,
+            429,
+            'tokenfault_unauthorized',
+            'Too many failed sign-in attempts; wait a minute.',
+          )
+        : fail(reply, 401, 'tokenfault_unauthorized', 'Invalid control token.');
+    }
+    return reply
+      .header('set-cookie', sessionCookie(result.sessionId, result.maxAgeSeconds))
+      .header('cache-control', 'no-store')
+      .send({ authenticated: true });
+  });
+
+  app.post(`${API_PREFIX}/auth/logout`, (request, reply) => {
+    ctx.auth?.logout(request.headers);
+    return reply.header('set-cookie', clearedSessionCookie()).code(204).send();
+  });
 
   app.get(`${API_PREFIX}/scenarios`, () => ({
     scenarios: SCENARIOS.map((s) => s.descriptor),
