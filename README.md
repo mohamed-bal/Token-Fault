@@ -186,7 +186,7 @@ TokenFault is a local developer tool. Its defaults assume one developer on one m
   is never stored in the browser or put in a URL. Set `TOKENFAULT_CONTROL_TOKEN` to choose your own, or pass
   `--no-control-auth` to disable it (not recommended on shared machines). `@tokenfault/testing` handles the token for you.
 - **Control plane is loopback-only.** `/__tokenfault/*` (Studio and API) also requires a loopback peer **and** a loopback `Host`
-  header (DNS-rebinding protection). Cross-site and cross-origin writes are rejected, JSON is required, and no CORS headers are
+  header (DNS-rebinding protection). `tokenfault replay --serve` applies the same `Host` check. Cross-site and cross-origin writes are rejected, JSON is required, and no CORS headers are
   sent. The data path also rejects non-loopback `Host` headers unless `--allow-remote` is set.
 - **Secrets.** `Authorization` and other credentials are forwarded upstream unchanged but never logged, captured, recorded or
   shown. Query-string values are redacted. Error messages are scrubbed of key-shaped strings.
@@ -237,7 +237,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and the [decision log](docs/engineering/D
 - Sessions live in memory only (200 by default). Recordings are the persistence mechanism.
 - Replay reproduces recorded bytes or events and their timing. It does not regenerate a model response.
 - Fragment timing depends on the OS network stack: separate writes usually arrive as separate reads, but TCP does not guarantee it.
-- Verified in CI on Linux (Node 22 and 24), Windows and macOS (Node 22). The Studio browser tests run on Linux only.
+- CI covers Linux (Node 22 and 24), Windows and macOS (Node 22); the Studio browser tests run on Linux only. See
+  [Implementation status](docs/engineering/IMPLEMENTATION_STATUS.md) for the latest results per platform.
 
 ## Development
 

@@ -45,19 +45,68 @@ ReactDOM, scheduler and Tailwind CSS output; their licenses ship in `studio/THIR
 - **First release:** `0.1.0`. It was never published before, so the control-token default (D-021) breaks no
   released consumer.
 
-## Release procedure (manual)
+## Compatibility matrix (0.1.0)
 
-1. On a clean checkout of `main` with CI green on all jobs (Linux, Windows, macOS, E2E, audit):
-   `pnpm install --frozen-lockfile && pnpm verify && pnpm test:pack`.
-2. Set the version in all six package manifests (and the root and Studio manifests) in one commit; move the
-   changelog's `Unreleased` section under the version and date.
-3. Tag `vX.Y.Z` on that commit.
-4. Publish in dependency order: `shared`, `core`, `mock-llm`, `proxy`, `testing`, `tokenfault`, each with
-   `pnpm publish --access public` from its package directory (pnpm rewrites `workspace:*`). Prefer npm
-   provenance (`--provenance`) from CI once a publishing workflow has been reviewed.
-5. Smoke-test from the registry in an empty directory: `npx tokenfault@X.Y.Z doctor` and
-   `npx tokenfault@X.Y.Z inspect --mock`.
-6. Create the GitHub release from the tag, with the changelog section as notes.
+| Platform              | Node.js | Status                                                                                                    |
+| --------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| Linux (ubuntu-latest) | 22      | Verified in CI: build, typecheck, lint, unit, integration, CLI smoke, external install, Studio E2E + a11y |
+| Linux (ubuntu-latest) | 24      | Verified in CI (same steps, without E2E)                                                                  |
+| Windows (latest)      | 22      | Verified in CI (same steps, without E2E). Recording files are not restricted to the current user (XP-8)   |
+| macOS (latest)        | 22      | Verified in CI (same steps, without E2E)                                                                  |
+| Any                   | < 22.12 | Unsupported (`engines` requires ≥ 22.12)                                                                  |
+| Studio browsers       | —       | Verified with Chromium (Playwright). Firefox and Safari are not tested                                    |
+
+Protocols: OpenAI-compatible Chat Completions (streaming and non-streaming) and generic SSE are supported. The
+OpenAI Responses API, the Anthropic Messages API, WebSockets and HTTP/2 upstreams are not.
+
+## npm names and access
+
+| Name                                                         | Registry (2026-10-09)                                               |
+| ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `tokenfault`                                                 | Not published (`npm view` → E404)                                   |
+| `@tokenfault/core`, `testing`, `shared`, `proxy`, `mock-llm` | Not published (E404)                                                |
+| `@tokenfault` scope                                          | No organization found (`npm org ls tokenfault` → "Scope not found") |
+
+A free name is not a publishing right. **Before the first publish the maintainer must** log in to npm, create
+the `tokenfault` organization (which owns the `@tokenfault` scope) or confirm ownership, and check that
+`tokenfault` can be published from that account. This cannot be verified without the maintainer's credentials.
+
+## Release checklist (manual; nothing here is automated)
+
+**Before tagging**
+
+- [ ] `main` is green on the release commit for every CI job (Linux Node 22/24, Windows, macOS, E2E, audit).
+- [ ] Clean checkout: `git clone … && pnpm install --frozen-lockfile && pnpm verify && pnpm test:pack`.
+- [ ] `pnpm audit --prod` and `pnpm audit` report no unreviewed advisories.
+- [ ] Version is the same in the root, `apps/studio` and all six package manifests (`0.1.0`);
+      `node packages/cli/dist/bin.js --version` prints it.
+- [ ] `CHANGELOG.md`: move `Unreleased` under `[0.1.0] - <date>`.
+- [ ] npm organization and access confirmed (see above); 2FA enabled on the publishing account.
+
+**Publish (maintainer only)**
+
+1. Tag: `git tag -a v0.1.0 -m "TokenFault 0.1.0" && git push origin v0.1.0`.
+2. From a clean build of the tagged commit, publish in dependency order. Each command runs from the package
+   directory, and pnpm rewrites `workspace:*` to `0.1.0`:
+
+   ```bash
+   for p in shared core mock-llm proxy testing cli; do
+     (cd packages/$p && pnpm publish --access public --no-git-checks)   # add --provenance from CI
+   done
+   ```
+
+3. Create the GitHub release from the tag, with the release notes below.
+
+**After publishing (empty directory, real registry)**
+
+```bash
+npm view tokenfault@0.1.0 version && npm view @tokenfault/core@0.1.0 dependencies
+npx -y tokenfault@0.1.0 --version
+npx -y tokenfault@0.1.0 doctor
+npx -y tokenfault@0.1.0 inspect --mock --scenario mid-stream-disconnect   # expect exit code 3
+mkdir sdk && cd sdk && npm init -y && npm i @tokenfault/testing@0.1.0 @tokenfault/core@0.1.0 \
+  && node --input-type=module -e "import {startStack,streamChatCompletion} from '@tokenfault/testing'; const s=await startStack(); console.log((await streamChatCompletion(s.proxy.url)).snapshot.outcome); await s.close()"
+```
 
 ## Rollback and deprecation
 
@@ -72,21 +121,33 @@ ReactDOM, scheduler and Tailwind CSS output; their licenses ship in `studio/THIR
 
 ## Release notes (draft for 0.1.0)
 
-> **TokenFault 0.1.0: first public release.** Inspect, replay, break and harden AI streaming applications.
+> **TokenFault 0.1.0** — the first public release of a local toolkit to inspect, replay and fault-test
+> streaming (SSE) AI applications that use OpenAI-compatible Chat Completions APIs.
 >
-> - Streaming proxy for OpenAI-compatible Chat Completions with byte-level SSE inspection and measured metrics
->   (SSE events and deltas, never "tokens")
-> - Nine deterministic fault scenarios (rate limits, 503, slow first byte, stalls, mid-stream disconnects,
->   fragmented and malformed SSE, broken tool calls, missing terminator)
-> - Recording and byte-exact replay with no model contacted; payload-free recordings by default
-> - Local Studio UI, protected by a per-run control token
-> - `@tokenfault/testing` for test suites; `@tokenfault/core` for SSE decoding and replay in your own tools
-> - Tested on Linux, Windows and macOS in CI (Node 22; Linux also Node 24)
+> **What's included**
 >
-> Not supported yet: OpenAI Responses API, Anthropic Messages API, WebSockets, HTTP/2 upstreams.
-> TokenFault has had internal reviews only, no external security audit.
+> - `tokenfault` CLI: `proxy`, `mock`, `inspect`, `scenarios`, `replay`, `doctor`, plus a local Studio web UI.
+> - A streaming proxy locked to one upstream that decodes SSE byte by byte and measures timing (headers, first
+>   byte, first event, first delta, gaps). Counts are SSE events and deltas, not model tokens.
+> - Nine deterministic, seeded fault scenarios: slow first response, mid-stream disconnect, 429, 503, stall,
+>   irregular timing, fragmented SSE, malformed data and fragmented tool calls.
+> - Recording (payload-free by default) and replay that never contacts a model: byte-exact or event-level, with
+>   original, scaled or fixed timing.
+> - `@tokenfault/testing` to run the mock and proxy in-process in test suites; `@tokenfault/core` for SSE
+>   decoding, chat-stream interpretation, recording and replay in your own tools.
+>
+> **Security defaults:** loopback-only binding, a per-run control token for the Studio and control API
+> (HttpOnly session cookie for the browser), redaction of credentials and query values, and sandboxed forwarded
+> content. Reviewed internally only; there has been no external security audit.
+>
+> **Tested on:** Linux (Node 22 and 24), Windows and macOS (Node 22) in CI; the Studio with Chromium.
+>
+> **Not supported yet:** OpenAI Responses API, Anthropic Messages API, WebSockets, HTTP/2 upstreams,
+> `HTTP(S)_PROXY` for upstream connections.
+>
+> **Requirements:** Node.js ≥ 22.12.
 
-The "tested on Windows and macOS" line may only stay if those CI jobs pass on the release commit (they pass on `867b95e`).
+The "Tested on" line may only stay if those CI jobs pass on the release commit.
 
 ## Repository metadata (proposal; apply manually)
 
@@ -104,17 +165,19 @@ website) and the **About** gear on the repository page (topics).
 
 ## Release readiness gates
 
-Evaluated on 2026-10-09 against `867b95e` on `main`. `NOT VERIFIED`
-means there is no evidence yet; it is not a pass.
+Evaluated on 2026-10-09 against the local release candidate (`main` plus the release-review commits, not yet pushed;
+see [RELEASE_AUDIT_0.1.0.md](RELEASE_AUDIT_0.1.0.md)). `NOT VERIFIED` means there is no evidence yet; it is not a pass.
 
-| Gate                   | Criteria                                                                                       | Status                                                                                                                                                                     |
-| ---------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A — Correctness        | Core, integration, contract and E2E tests pass                                                 | **PASS**: CI run #3 on `867b95e` (Linux, Windows, macOS; E2E on Linux); locally 210 unit, 96 integration/contract, 6 E2E, 36 smoke checks                                  |
-| B — Packaging          | Tarballs validated; external install works; exports and types resolve; runtime deps present    | **PASS**: `pnpm test:pack` (57 checks) green in CI on Linux, Windows and macOS                                                                                             |
-| C — Security           | No unmitigated Critical/High findings; sensitive-data tests pass; dependency findings reviewed | **PASS**: no open Critical/High; redaction and token-leak tests pass; `pnpm audit` 0 advisories. Internal review only                                                      |
-| D — Compatibility      | Linux CI verified; Windows and macOS CI verified when run                                      | **PASS**: CI run #3 ([37955049281](https://github.com/mohamed-bal/Token-Fault/actions/runs/37955049281)) on `867b95e`: Linux (Node 22 and 24), Windows and macOS (Node 22) |
-| E — Documentation      | Quickstart verified; protocols documented accurately; limitations stated; license reviewed     | **PASS**: README journey replayed from a clean clone (Linux); MIT, holder `mohamed-bal` (D-013), Studio third-party notices shipped                                        |
-| F — Release operations | Versioning defined; graph publishable; release notes; rollback documented                      | **PASS** (this document); publishing itself not exercised                                                                                                                  |
+| Gate          | Criterion                                  | Status           | Evidence                                                                                                                                                                               |
+| ------------- | ------------------------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Correctness   | Unit, integration, contract, E2E           | **PASS** (local) | `pnpm verify`: 212 unit + 103 integration/contract, 36 smoke checks, 6 E2E (Linux). Integration suite also 103/103 twice under emulated Windows timers                                 |
+| Security      | No known unmitigated Critical/High         | **PASS**         | Internal review: no Critical/High/Medium; SEC-R1..R5 fixed with failing-first tests; SEC-R6 (Low) accepted residual risk; `pnpm audit` 0 advisories. No external audit                 |
+| Packaging     | External installation works                | **PASS** (local) | Tarball-only install in an isolated project; `pnpm test:pack` 57/57; strict TypeScript consumer compiles and runs                                                                      |
+| Portability   | Linux, Windows, macOS verified             | **NOT VERIFIED** | Last full green CI: run #3 on `867b95e`. Run #4 (`2133883`) failed on Windows (XP-10, now fixed). The fixes are verified on Linux and under timer emulation, not yet on GitHub runners |
+| Documentation | Accurate and synchronized                  | **PASS**         | Status, release, threat model, changelog and audit documents updated in the same change set; stale entries corrected (DOC-4)                                                           |
+| DX            | First-time developer journey verified      | **PASS** (Linux) | 14/14 journey steps from the installed package, including the Studio in Chromium and replay with the upstream stopped                                                                  |
+| Performance   | No confirmed severe regression             | **PASS**         | Benchmarks within VM noise of BENCHMARKS.md; decoder flat from 64 B to 256 KiB chunks (PERF-1 not returned)                                                                            |
+| Release       | Package names, access and process reviewed | **NOT VERIFIED** | Names unpublished and `@tokenfault` scope not found; ownership needs the maintainer's npm login. Process, order, smoke tests and rollback documented above                             |
 
-All six gates pass on `867b95e`. The release itself (npm publication, tag, GitHub release) still needs the
-maintainer's approval, and gates must be re-checked on the release commit.
+**Technical readiness:** conditional on a green CI run of the release candidate on every platform.
+**Publication authorization:** the maintainer's decision; nothing is published, tagged or released automatically.

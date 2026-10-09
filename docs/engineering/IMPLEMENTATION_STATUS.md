@@ -29,8 +29,8 @@ and accessibility tests run on Linux only.
 | Typecheck (all packages, tests, E2E, tool configs) | `pnpm typecheck`        | ✅ pass                                                 |
 | Lint (type-aware, `--max-warnings=0`)              | `pnpm lint`             | ✅ pass                                                 |
 | Format                                             | `pnpm format:check`     | ✅ pass                                                 |
-| Unit tests                                         | `pnpm test:unit`        | ✅ 210 passed, 12 files                                 |
-| Integration + contract tests                       | `pnpm test:integration` | ✅ 96 passed, 7 files                                   |
+| Unit tests                                         | `pnpm test:unit`        | ✅ 212 passed, 12 files                                 |
+| Integration + contract tests                       | `pnpm test:integration` | ✅ 103 passed, 7 files                                  |
 | CLI smoke test (built binary)                      | `pnpm smoke`            | ✅ 36/36 checks                                         |
 | E2E incl. accessibility (Playwright, Chromium)     | `pnpm test:e2e`         | ✅ 6 passed (axe-core WCAG 2.2 AA rules on every view)  |
 | External install from packed tarballs              | `pnpm test:pack`        | ✅ 57/57 checks                                         |
@@ -41,7 +41,7 @@ and accessibility tests run on Linux only.
 | Platform (GitHub Actions) | Result                                                                                                                                                                                                                         |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Linux, Node 22            | ✅ Run #3 ([37955049281](https://github.com/mohamed-bal/Token-Fault/actions/runs/37955049281)) on `867b95e`: build, typecheck, lint, format, unit, integration, smoke, external install; E2E + accessibility; dependency audit |
-| Windows, Node 22          | ✅ Run #3 on `867b95e` (same steps as Linux, E2E excluded). Run #2 on `39e2ef0` failed 3 `fragmented-sse` tests (timer granularity, XP-9), fixed in `867b95e`                                                                  |
+| Windows, Node 22          | ✅ Run #3 on `867b95e`. ❌ Run #4 on `2133883` (docs-only): 1 integration test failed (XP-10, reset delayed by the 1 s fallback); fixed in the release-review commits, which have not run on GitHub yet                        |
 | macOS, Node 22            | ✅ Runs #2 and #3 (same steps as Linux, E2E excluded)                                                                                                                                                                          |
 | Linux, Node 24            | ✅ Runs #2 and #3 (same steps as Linux Node 22, E2E excluded)                                                                                                                                                                  |
 
@@ -53,19 +53,19 @@ and accessibility tests run on Linux only.
 | `packages/core/test/sse-framer-encoder.test.ts` |     8 | Byte-exact framing, CRLF across chunks, encoder round-trip                                                                                                     |
 | `packages/core/test/chat-stream.test.ts`        |    17 | Interpreter, accumulator, protocol violations, retention bounds                                                                                                |
 | `packages/core/test/stream-inspector.test.ts`   |    12 | Metrics, outcomes, capture limits, redaction, native/portable base64 equivalence                                                                               |
-| `packages/core/test/faults.test.ts`             |    45 | Schema validation, determinism, scenarios A–I planning, executor, wait pacing                                                                                  |
+| `packages/core/test/faults.test.ts`             |    46 | Schema validation, determinism, scenarios A–I planning, executor, wait pacing                                                                                  |
 | `packages/core/test/recording-replay.test.ts`   |    18 | Redaction skeletons, schema validation (malicious inputs), replay modes and timing                                                                             |
-| `packages/core/test/review-regressions.test.ts` |     7 | Review regressions: hostile recording data, replayability, long sleeps, `endResponse`                                                                          |
+| `packages/core/test/review-regressions.test.ts` |     8 | Review regressions: hostile recording data, replayability, long sleeps, `endResponse`                                                                          |
 | `packages/shared/test/redact.test.ts`           |    22 | Sensitive headers, query redaction (including bare parameters), secret scrubbing                                                                               |
 | `packages/proxy/test/target-headers.test.ts`    |    27 | Target lock, traversal, header policy (including isolation headers), request metadata                                                                          |
 | `packages/proxy/test/session-store.test.ts`     |     4 | Eviction, batching, subscriber isolation                                                                                                                       |
 | `packages/cli/test/cli.test.ts`                 |     7 | Terminal sanitisation, option parsing, entry point                                                                                                             |
 | `packages/cli/test/meta.test.ts`                |     4 | Studio asset discovery (bundled, monorepo, env, unrelated `apps/studio` never served)                                                                          |
 | `tests/integration/mock-llm.test.ts`            |    20 | Mock protocol and scenarios A–I observed by a real client                                                                                                      |
-| `tests/integration/proxy.test.ts`               |    36 | AC-2.1–2.9: streaming, headers, cancellation, resets, timeouts, backpressure, SSRF, DNS rebinding, control-plane guard, replay, live feed, event-loop fairness |
-| `tests/integration/control-auth.test.ts`        |     9 | Control token: 401s, Bearer, cookie attributes, logout, Origin guard, rate limit, disabled mode, token never logged                                            |
+| `tests/integration/proxy.test.ts`               |    37 | AC-2.1–2.9: streaming, headers, cancellation, resets, timeouts, backpressure, SSRF, DNS rebinding, control-plane guard, replay, live feed, event-loop fairness |
+| `tests/integration/control-auth.test.ts`        |    14 | Control token: 401s, Bearer, cookie attributes, logout, Origin guard, rate limit, disabled mode, token never logged                                            |
 | `tests/integration/security-p2.test.ts`         |     7 | Phase 2 security regressions SEC-1 to SEC-7                                                                                                                    |
-| `tests/integration/recording-static.test.ts`    |    12 | Recorder permissions and retention, replay server, static file traversal and symlinks (symlink case skipped where the OS forbids them)                         |
+| `tests/integration/recording-static.test.ts`    |    13 | Recorder permissions and retention, replay server, static file traversal and symlinks (symlink case skipped where the OS forbids them)                         |
 | `tests/integration/openai-sdk.test.ts`          |     6 | Contract with the official `openai` SDK 5.23.2                                                                                                                 |
 | `tests/integration/example-client.test.ts`      |     6 | Reference resilient client against the scenarios                                                                                                               |
 | `tests/e2e/studio.spec.ts`                      |     4 | Sign-in and token storage, full Studio journey, Fault Lab, CSP and cross-site rejection                                                                        |
@@ -126,12 +126,12 @@ All items under _Implemented_ in [ROADMAP.md](../../ROADMAP.md).
 
 ## Technical risks
 
-| Risk                                                                      | Impact                                                         | Mitigation / next step                                                     |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Windows/macOS CI has not run yet                                          | Platform differences in signals, file modes, paths and sockets | Push and watch the matrix; fixes for known issues (XP-1..7) are in place   |
-| Toolchain majors moved on (TS 7, Vite 8, Vitest 5)                        | Future upgrade effort                                          | Versions pinned; upgrade deliberately (DECISIONS D-002)                    |
-| Behaviour of other OpenAI-compatible servers (vLLM, Ollama, OpenRouter …) | Unknown keys or different terminators                          | The interpreter reports rather than fails; add fixtures from real captures |
-| Fastify `hijack()` streaming relies on raw Node semantics                 | Fastify upgrades could change hook behaviour                   | Integration tests cover hijacked paths                                     |
+| Risk                                                                      | Impact                                       | Mitigation / next step                                                                                                    |
+| ------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Platform-specific timing (timer granularity, asynchronous socket writes)  | Flaky fault timing on one OS                 | Matrix CI on every push; fault waits paced only where the contract allows (XP-9); resets flush queued bytes first (XP-10) |
+| Toolchain majors moved on (TS 7, Vite 8, Vitest 5)                        | Future upgrade effort                        | Versions pinned; upgrade deliberately (DECISIONS D-002)                                                                   |
+| Behaviour of other OpenAI-compatible servers (vLLM, Ollama, OpenRouter …) | Unknown keys or different terminators        | The interpreter reports rather than fails; add fixtures from real captures                                                |
+| Fastify `hijack()` streaming relies on raw Node semantics                 | Fastify upgrades could change hook behaviour | Integration tests cover hijacked paths                                                                                    |
 
 ## Next priorities
 

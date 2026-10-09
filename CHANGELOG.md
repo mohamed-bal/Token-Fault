@@ -25,6 +25,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   their runtime dependencies `@tokenfault/shared`, `@tokenfault/mock-llm`, `@tokenfault/proxy`; an external
   install test (`scripts/pack-test.mjs`) in CI. Nothing has been published.
 - CI on Linux, Windows and macOS (Node 22) and Linux (Node 24); `pnpm audit` job; actions pinned by commit SHA
+  (Node 24-based majors)
 - Benchmark suite (`pnpm bench`) and documented results (`docs/engineering/BENCHMARKS.md`)
 
 ### Fixed
@@ -37,11 +38,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Studio paths were percent-decoded twice
 - SSE decoder was quadratic in chunk size (3–5× slower on 64–256 KiB reads)
 - `--json` output could be truncated on exit through a pipe; reset terminations could drop unsent bytes on Windows
-- Fault waits (fragmentation gaps, mock event interval) paid the OS timer granularity on every wait; on Windows
-  `fragmented-sse` ran ~15× longer than configured
+- Fragmentation gaps paid the OS timer granularity on every wait; on Windows `fragmented-sse` ran ~15× longer
+  than configured. Pacing applies only to fragmentation gaps; jitter, stalls and delays are never shortened
+- A fault or replayed TCP reset could be delayed by up to 1 s while bytes were still queued (Windows)
 - `inspect --record` to an existing file sent the request first and then failed with a raw `EEXIST`
 - An unrelated `apps/studio/dist` next to an installed CLI could be served as the Studio
 
 ### Security
 
-- See `docs/engineering/PHASE2_AUDIT.md` and the threat model (T21–T26). Internal review only; no external audit.
+- Release review fixes: the live feed stops after logout; a correct token cannot be locked out by failed sign-ins;
+  planted or upstream `tf_session` cookies cannot shadow the Studio session; `replay --serve` requires a loopback
+  `Host`; request bodies must arrive within 120 s
+
+- See `docs/engineering/PHASE2_AUDIT.md`, `docs/engineering/RELEASE_AUDIT_0.1.0.md` and the threat model (T21–T31). Internal review only; no external audit.
