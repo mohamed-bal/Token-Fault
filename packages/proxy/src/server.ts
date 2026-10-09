@@ -138,6 +138,8 @@ export interface TokenFaultServer {
   /** Stops accepting connections, aborts replays and flushes pending recordings. */
   close(): Promise<void>;
   readonly url: string | null;
+  /** Credential-free display form of the upstream target. */
+  readonly targetDisplay: string;
   setActiveFaults(selection: FaultSelection | null): void;
 }
 
@@ -427,6 +429,7 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
     get url() {
       return listeningUrl;
     },
+    targetDisplay: target.display,
     async listen() {
       await app.listen({ host, port: options.port ?? DEFAULT_PROXY_PORT });
       const address = app.server.address();
