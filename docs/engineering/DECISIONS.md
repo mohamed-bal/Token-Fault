@@ -127,9 +127,14 @@ the fault profile, and every session records it.
 ## D-009 — Transparent vs. framed forwarding
 
 With no in-stream fault active, the proxy forwards upstream chunks exactly as received
-(transparent mode). Original chunk boundaries and timing are preserved. With an in-stream fault
-active, the proxy re-frames the stream into complete SSE events (bounded by `maxEventBytes`) so
-faults can act on event boundaries.
+(transparent mode): one client write per upstream read, with timing preserved. With an in-stream
+fault active on an uncompressed 2xx SSE body, the proxy re-frames the stream into complete SSE
+events (bounded by `maxEventBytes`) so faults can act on event boundaries. Bytes are never
+re-encoded in either mode.
+
+_Amendment (implementation):_ `content-length` from the upstream is never forwarded. Responses are
+always streamed with chunked transfer encoding. This keeps the two modes consistent, and injected
+frames would invalidate the length anyway.
 
 ## D-010 — Privacy defaults
 
@@ -178,3 +183,30 @@ were rejected: the command surface is small, and `parseArgs` is in the standard 
 The mock server reports `usage` only when the client asks (`stream_options.include_usage`).
 The numbers are deterministic counts of emitted deltas, not tokenizer output, and the docs say
 so. Studio shows `usage` only as "reported by API".
+
+## D-016 — Mock-only scenarios are delegated through the proxy
+
+`fragment-tool-calls` shapes _generated content_, so only the mock can apply it. If a request selects a
+mock-only scenario with `x-tokenfault-scenario`, the proxy applies no faults itself, forwards the scenario
+header upstream, and records a `delegated` annotation. Server-wide selection of a mock-only scenario via the
+control API is still rejected, because it would silently do nothing against a real provider.
+
+**Rejected.** Rejecting the request with 400. That broke the natural Studio flow (proxy → mock) for scenario I.
+
+## D-017 — Host-header check on the data path
+
+While the proxy is bound to loopback, every request (not only control-plane requests) must carry a loopback
+`Host` header. Legitimate local clients always do. A DNS-rebinding web page cannot. `--allow-remote` disables
+the check for the data path only.
+
+## D-018 — Contract tests use the official `openai` SDK (dev dependency only)
+
+"OpenAI-compatible" is only claimed because the official `openai` Node SDK (5.23.2) consumes the mock and the
+proxy correctly, and surfaces injected faults as its own error types (`tests/integration/openai-sdk.test.ts`).
+The SDK is a test-only dependency of the private integration-test package.
+
+## D-019 — Request bodies are buffered (bounded)
+
+The proxy buffers the request body (≤ `maxRequestBodyBytes`, 20 MiB by default) before forwarding. This lets it
+record non-sensitive request facts (model, stream flag, counts) without keeping the prompt, and keeps
+pre-response fault handling simple. Response bodies are always streamed.
