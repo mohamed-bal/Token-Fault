@@ -1,0 +1,43 @@
+{
+  "name": "tokenfault-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TokenFault — debugging, observability and fault-injection toolkit for AI streaming applications.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --workspace-concurrency=1 run build",
+    "typecheck": "tsc -b && pnpm -r --parallel run typecheck",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "smoke": "node scripts/cli-smoke.mjs",
+    "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm smoke",
+    "clean": "pnpm -r exec rm -rf dist tsconfig.build.tsbuildinfo tsconfig.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.20.4",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.12.0",
+    "prettier": "3.9.8",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vitest": "4.1.11"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

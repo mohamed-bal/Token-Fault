@@ -1,0 +1,30 @@
+{
+  "name": "@tokenfault/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TokenFault streaming engine: incremental SSE decoder, OpenAI chat-completions interpreter, stream metrics, deterministic fault engine, recording and replay.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tokenfault/shared": "workspace:*",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+playwright-report/
+test-results/
+.tokenfault/
+*.tfrec.json
+!tests/fixtures/**/*.tfrec.json
+.env
+.env.*
+*.log
+.DS_Store
