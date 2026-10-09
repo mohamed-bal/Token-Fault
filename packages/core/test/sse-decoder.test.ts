@@ -310,3 +310,38 @@ describe('SseDecoder partition invariance (AC-1.1)', () => {
     ]);
   });
 });
+
+describe('SseDecoder size limit is chunk-invariant (regression)', () => {
+  it('dispatches a CRLF block exactly at the limit regardless of where the chunk splits', () => {
+    const max = 1024;
+    const bytes = enc.encode(`data: ${'x'.repeat(1017)}\r\n\r\ndata: next\r\n\r\n`);
+    const reference = decodeAll([bytes], { maxEventBytes: max });
+    for (let split = 1; split < bytes.length; split++) {
+      expect(
+        decodeAll([bytes.subarray(0, split), bytes.subarray(split)], { maxEventBytes: max }),
+      ).toEqual(reference);
+    }
+    expect(events(reference).map((e) => e.data.length)).toEqual([1017, 4]);
+  });
+
+  it('fuzz: mixed line endings and block sizes around the limit give identical output for any partition', () => {
+    const rand = mulberry32(424242);
+    const endings = ['\n', '\r', '\r\n'];
+    for (let round = 0; round < 60; round++) {
+      let text = '';
+      for (let b = 0; b < 6; b++) {
+        const nl = endings[Math.floor(rand() * 3)]!;
+        const lines = 1 + Math.floor(rand() * 3);
+        for (let l = 0; l < lines; l++) text += `data: ${'y'.repeat(Math.floor(rand() * 70))}${nl}`;
+        text += nl;
+      }
+      const bytes = enc.encode(text);
+      const reference = decodeAll([bytes], { maxEventBytes: 96 });
+      for (let p = 0; p < 15; p++) {
+        expect(
+          decodeAll(partition(bytes, rand, 1 + Math.floor(rand() * 20)), { maxEventBytes: 96 }),
+        ).toEqual(reference);
+      }
+    }
+  });
+});

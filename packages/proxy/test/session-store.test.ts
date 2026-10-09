@@ -73,7 +73,7 @@ describe('SessionStore', () => {
     expect(good).toEqual(['session-started', 'session-started']);
   });
 
-  it('notifies end listeners only for retained sessions', () => {
+  it('notifies end listeners for evicted sessions too, so they can still be recorded', () => {
     const store = new SessionStore({ maxSessions: 1, capturePayloads: true, limits });
     const ended: string[] = [];
     store.onSessionEnd((s) => ended.push(s.id));
@@ -81,6 +81,6 @@ describe('SessionStore', () => {
     const b = store.create(meta('b'), null);
     store.end(a, { kind: 'eof', atMs: 1, detail: null });
     store.end(b, { kind: 'eof', atMs: 1, detail: null });
-    expect(ended).toEqual(['b']);
+    expect(ended).toEqual(['a', 'b']);
   });
 });

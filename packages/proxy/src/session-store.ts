@@ -131,9 +131,18 @@ export class SessionStore {
     session.ended = true;
     this.queue(session, update.events, []);
     this.flushSession(session);
-    if (this.sessions.get(session.id) !== session) return;
-    this.emit({ type: 'session-ended', session: session.summary() });
-    for (const listener of this.endListeners) listener(session);
+    // UI notifications only for retained sessions, but end listeners (the recorder) always run:
+    // a session evicted or cleared while streaming must still be recorded.
+    if (this.sessions.get(session.id) === session) {
+      this.emit({ type: 'session-ended', session: session.summary() });
+    }
+    for (const listener of this.endListeners) {
+      try {
+        listener(session);
+      } catch {
+        // A failing end listener must not affect request handling or other listeners.
+      }
+    }
   }
 
   clear(): void {

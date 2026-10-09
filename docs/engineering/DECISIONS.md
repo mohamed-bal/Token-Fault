@@ -210,3 +210,10 @@ The SDK is a test-only dependency of the private integration-test package.
 The proxy buffers the request body (≤ `maxRequestBodyBytes`, 20 MiB by default) before forwarding. This lets it
 record non-sensitive request facts (model, stream flag, counts) without keeping the prompt, and keeps
 pre-response fault handling simple. Response bodies are always streamed.
+
+## D-020 — The idle timeout measures upstream silence only while the proxy is reading
+
+The idle timer is paused while the proxy itself waits: injected stalls, jitter or first-content delays, or a
+slow client applying backpressure. Otherwise, a fault longer than the idle timeout, or a slow consumer, would be
+misreported as `upstream-timeout` and would kill a healthy upstream. The optional total timeout still bounds
+the whole exchange. _(Found by the internal review.)_

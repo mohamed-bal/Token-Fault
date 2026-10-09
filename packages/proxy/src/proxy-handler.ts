@@ -21,7 +21,12 @@ import { request as httpsRequest } from 'node:https';
 import type { FastifyBaseLogger, FastifyReply, FastifyRequest } from 'fastify';
 import { FaultPlanner, findScenario, selectFaults, sleep } from '@tokenfault/core';
 import type { FaultSelection, FaultSpec } from '@tokenfault/core';
-import { ClientGoneError, FaultedResponseWriter, terminateResponse } from '@tokenfault/core/node';
+import {
+  ClientGoneError,
+  FaultedResponseWriter,
+  endResponse,
+  terminateResponse,
+} from '@tokenfault/core/node';
 import {
   CONTROL_PREFIX,
   FAULTS_HEADER,
@@ -93,17 +98,27 @@ export function extractRequestMeta(body: Buffer, contentType: string | undefined
   return { ...meta, bodyBytes: body.length };
 }
 
+/** True if the raw or percent-decoded path is under the reserved control prefix (never forwarded). */
+function targetsControlPrefix(rawUrl: string): boolean {
+  const matches = (p: string): boolean =>
+    p === CONTROL_PREFIX ||
+    p.startsWith(`${CONTROL_PREFIX}/`) ||
+    p.startsWith(`${CONTROL_PREFIX}?`);
+  if (matches(rawUrl)) return true;
+  try {
+    return matches(decodeURIComponent(rawUrl.split('?', 1)[0] ?? ''));
+  } catch {
+    return false;
+  }
+}
+
 export async function handleProxyRequest(
   ctx: ProxyContext,
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
   const rawUrl = request.raw.url ?? '/';
-  if (
-    rawUrl === CONTROL_PREFIX ||
-    rawUrl.startsWith(`${CONTROL_PREFIX}/`) ||
-    rawUrl.startsWith(`${CONTROL_PREFIX}?`)
-  ) {
+  if (targetsControlPrefix(rawUrl)) {
     await sendError(reply, 404, 'tokenfault_not_found', 'Unknown TokenFault control endpoint.');
     return;
   }
@@ -324,7 +339,9 @@ class ProxyExchange {
           this.writeJsonError(
             504,
             'tokenfault_upstream_timeout',
-            `Upstream did not send response headers within ${this.ctx.headersTimeoutMs} ms.`,
+            this.timeoutReason === 'total'
+              ? `Upstream exchange exceeded the total timeout of ${this.ctx.totalTimeoutMs ?? 0} ms before response headers.`
+              : `Upstream did not send response headers within ${this.ctx.headersTimeoutMs} ms.`,
           );
           this.finish('upstream-timeout', `${this.timeoutReason} timeout`);
         } else {
@@ -376,10 +393,13 @@ class ProxyExchange {
     this.armIdleTimer(upstream);
     try {
       for await (const chunk of upstream) {
-        this.armIdleTimer(upstream);
+        // The idle timer measures upstream silence only while we are actually reading. It is paused
+        // while the proxy itself waits (injected stalls/jitter, or a slow client applying backpressure).
+        this.pauseIdleTimer();
         const buf = chunk as Buffer;
         const ok = await writer.push(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
         if (!ok) break;
+        this.armIdleTimer(upstream);
       }
       if (this.idleTimer) clearTimeout(this.idleTimer);
       if (writer.disconnected) {
@@ -391,8 +411,8 @@ class ProxyExchange {
         return this.finish('client-abort', null);
       }
       if (await writer.end()) {
-        await new Promise<void>((resolve) => this.res.end(resolve));
-        return this.finish('eof', null);
+        await endResponse(this.res);
+        return this.finish(this.res.writableFinished ? 'eof' : 'client-abort', null);
       }
       if (!writer.disconnected) this.finish('client-abort', null);
     } catch (error) {
@@ -414,6 +434,11 @@ class ProxyExchange {
     } finally {
       writer.dispose();
     }
+  }
+
+  private pauseIdleTimer(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
   }
 
   private armIdleTimer(upstream: IncomingMessage): void {

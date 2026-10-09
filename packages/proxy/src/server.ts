@@ -182,12 +182,29 @@ function resolveInitialFaults(options: TokenFaultServerOptions): FaultSelection 
   return null;
 }
 
-function isControlPath(url: string): boolean {
+function hasControlPrefix(path: string): boolean {
   return (
-    url === CONTROL_PREFIX ||
-    url.startsWith(`${CONTROL_PREFIX}/`) ||
-    url.startsWith(`${CONTROL_PREFIX}?`)
+    path === CONTROL_PREFIX ||
+    path.startsWith(`${CONTROL_PREFIX}/`) ||
+    path.startsWith(`${CONTROL_PREFIX}?`)
   );
+}
+
+/**
+ * Decides whether a request targets the control plane. The router percent-decodes paths, so the
+ * check must not rely on the raw URL alone: `/%5F%5Ftokenfault/api/...` routes to control handlers.
+ * The request is treated as control-plane if the matched route, the raw path or the decoded path
+ * carries the prefix.
+ */
+function isControlRequest(rawUrl: string, routeUrl: string | undefined): boolean {
+  if (routeUrl !== undefined && hasControlPrefix(routeUrl)) return true;
+  if (hasControlPrefix(rawUrl)) return true;
+  const path = rawUrl.split('?', 1)[0] ?? '';
+  try {
+    return hasControlPrefix(decodeURIComponent(path));
+  } catch {
+    return false;
+  }
 }
 
 function isAllowedOrigin(origin: string, port: number | null): boolean {
@@ -280,7 +297,16 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
 
   app.addHook('onRequest', async (request, reply) => {
     const url = request.raw.url ?? '';
-    if (!isControlPath(url)) {
+    // Only origin-form request targets are accepted. Absolute-form (`GET http://host/path`) is a
+    // forward-proxy request and would otherwise be routed by its path.
+    if (!url.startsWith('/')) {
+      return reply
+        .code(400)
+        .send(
+          errorBody('tokenfault_invalid_request', 'Only origin-form request targets are accepted.'),
+        );
+    }
+    if (!isControlRequest(url, request.routeOptions.url)) {
       // Data path: while bound to loopback, only loopback Host names are accepted, so a web
       // page using DNS rebinding cannot drive requests through the proxy.
       if (options.allowRemote !== true && !isLoopbackHostHeader(request.headers.host)) {

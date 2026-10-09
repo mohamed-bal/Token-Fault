@@ -16,19 +16,31 @@ import type { SessionStore } from './session-store.js';
 export class ReplayLimitError extends Error {}
 
 /** Maps a transformed annotation time for the selected timing. */
+/**
+ * Maps an annotation's original time onto the replay timeline. For fixed timing, the annotation is
+ * placed at the first replayed step whose ORIGINAL time is at or after it (chunks or events, whichever
+ * the plan replays), so it stays next to the data it described.
+ */
 function annotationTime(
   atMs: number,
-  afterEvents: number | null,
   timing: ReplayTiming,
   plan: ReplayPlan,
+  recording: Recording,
 ): number {
   switch (timing.kind) {
     case 'original':
       return atMs;
     case 'scaled':
       return atMs / timing.factor;
-    case 'fixed':
-      return plan.steps[Math.min(afterEvents ?? 0, Math.max(0, plan.steps.length - 1))]?.atMs ?? 0;
+    case 'fixed': {
+      const originals =
+        plan.mode === 'chunks'
+          ? recording.chunks.map((c) => c.atMs)
+          : recording.events.map((e) => e.atMs);
+      const index = originals.findIndex((t) => t >= atMs);
+      const step = plan.steps[index === -1 ? plan.steps.length - 1 : index];
+      return step?.atMs ?? plan.headersAtMs;
+    }
   }
 }
 
@@ -72,7 +84,7 @@ export class ReplayManager {
     for (const a of recording.annotations) {
       this.store.annotate(session, {
         ...a,
-        atMs: annotationTime(a.atMs, a.afterEvents, timing, plan),
+        atMs: annotationTime(a.atMs, timing, plan, recording),
         message: `[replayed] ${a.message}`,
       });
     }

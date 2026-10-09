@@ -3,7 +3,13 @@ import { REDACTED, describeError } from '@tokenfault/shared';
 import type { CapturedEvent, SessionDetail } from '@tokenfault/shared';
 import { DONE_MARKER } from '../openai/chat-stream.js';
 import { utf8ByteLength } from '../sse/decoder.js';
-import { RecordingSchema } from './schema.js';
+import {
+  MAX_RECORDED_ANNOTATIONS,
+  MAX_RECORDED_CHUNKS,
+  MAX_RECORDED_EVENTS,
+  RECORDING_BOUNDS,
+  RecordingSchema,
+} from './schema.js';
 import type { Recording } from './schema.js';
 
 /**
@@ -128,47 +134,97 @@ export function createRecording(
   session: SessionDetail,
   options: CreateRecordingOptions,
 ): Recording {
+  const B = RECORDING_BOUNDS;
   const includePayloads = (options.includePayloads ?? false) && session.payloadCapture;
   const chunksComplete =
     includePayloads &&
     session.droppedChunks === 0 &&
     session.chunks.length === session.metrics.chunkCount &&
-    session.chunks.every((c) => c.dataBase64 !== null);
+    session.chunks.length <= MAX_RECORDED_CHUNKS &&
+    session.chunks.every((c) => c.dataBase64 !== null && c.dataBase64.length <= B.maxChunkBase64);
+
+  // Upstream-controlled values are clamped to the schema bounds, so a hostile or unusual upstream
+  // can never make a session impossible to export, record or replay.
+  const headers = Object.fromEntries(
+    Object.entries(session.responseHeaders)
+      .slice(0, B.maxHeaders)
+      .map(([k, v]) => [clip(k, B.maxHeaderName), clip(v, B.maxHeaderValue)]),
+  );
+  const ms = (v: number): number => Math.min(Math.max(0, v), B.maxDurationMs);
+  const msOrNull = (v: number | null): number | null => (v === null ? null : ms(v));
+  const m = session.metrics;
 
   const doc = {
     format: 'tokenfault-recording',
     schemaVersion: 1,
     recordedAt: (options.now?.() ?? new Date()).toISOString(),
-    tool: { name: 'tokenfault', version: options.toolVersion },
+    tool: { name: 'tokenfault', version: clip(options.toolVersion, 64) },
     session: {
       id: session.id,
       source: session.source,
       method: session.method,
-      path: session.path,
-      status: session.status,
-      responseHeaders: session.responseHeaders,
-      request: session.request,
+      path: clip(session.path, B.maxPath),
+      status:
+        session.status !== null && session.status >= 100 && session.status <= 999
+          ? session.status
+          : null,
+      responseHeaders: headers,
+      request: {
+        ...session.request,
+        model: session.request.model === null ? null : clip(session.request.model, 256),
+      },
       outcome: session.outcome,
       completionSignal: session.completionSignal,
-      termination: session.termination,
+      termination: session.termination
+        ? {
+            ...session.termination,
+            atMs: ms(session.termination.atMs),
+            detail:
+              session.termination.detail === null
+                ? null
+                : clip(session.termination.detail, B.maxText),
+          }
+        : null,
       scenarioId: session.scenarioId,
       faults: session.faults,
       seed: options.seed,
-      metrics: session.metrics,
+      metrics: {
+        ...m,
+        headersMs: msOrNull(m.headersMs),
+        firstByteMs: msOrNull(m.firstByteMs),
+        firstEventMs: msOrNull(m.firstEventMs),
+        firstContentMs: msOrNull(m.firstContentMs),
+        durationMs: msOrNull(m.durationMs),
+        eventGaps: m.eventGaps
+          ? {
+              ...m.eventGaps,
+              minMs: ms(m.eventGaps.minMs),
+              maxMs: ms(m.eventGaps.maxMs),
+              meanMs: ms(m.eventGaps.meanMs),
+              p50Ms: ms(m.eventGaps.p50Ms),
+              p95Ms: ms(m.eventGaps.p95Ms),
+              p99Ms: ms(m.eventGaps.p99Ms),
+            }
+          : null,
+      },
     },
     payloads: { included: includePayloads },
-    events: session.events.map((e) => {
-      const data =
+    events: session.events.slice(0, MAX_RECORDED_EVENTS).map((e) => {
+      let data =
         includePayloads && e.data !== null
           ? e.data
           : e.data !== null
             ? redactEventData(e.data)
             : skeletonFromInterpretation(e);
+      if (data.length > B.maxEventData) data = REDACTED;
       return {
         seq: e.seq,
-        atMs: e.atMs,
-        event: e.event,
-        id: e.id,
+        atMs: ms(e.atMs),
+        event: clip(e.event.replace(/[\r\n]/g, ' '), B.maxEventType),
+        id:
+          e.id === null
+            ? null
+            : clip(e.id.replace(/[\r\n]/g, ' ').replaceAll('\u0000', ' '), B.maxEventId),
         retry: e.retry,
         data,
         dataByteLength: e.dataByteLength,
@@ -179,14 +235,23 @@ export function createRecording(
     chunks: chunksComplete
       ? session.chunks.map((c) => ({
           seq: c.seq,
-          atMs: c.atMs,
+          atMs: ms(c.atMs),
           byteLength: c.byteLength,
           dataBase64: c.dataBase64 ?? '',
         }))
       : [],
-    annotations: session.annotations.slice(0, 1_000),
+    annotations: session.annotations.slice(0, MAX_RECORDED_ANNOTATIONS).map((a) => ({
+      ...a,
+      atMs: ms(a.atMs),
+      faultType: clip(a.faultType, 64),
+      message: clip(a.message, B.maxText),
+    })),
   };
   return RecordingSchema.parse(doc);
+}
+
+function clip(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) : text;
 }
 
 export type RecordingParseResult =

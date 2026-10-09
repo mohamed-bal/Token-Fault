@@ -68,3 +68,22 @@ export function terminateResponse(res: ServerResponse, mode: DisconnectMode): vo
     }
   }
 }
+
+/**
+ * Ends a response and resolves once it finished OR the connection closed. `res.end(cb)` alone
+ * never calls back if the socket was destroyed before `'close'` was emitted, which would leave
+ * the caller waiting forever.
+ */
+export function endResponse(res: ServerResponse): Promise<void> {
+  if (res.destroyed || res.writableFinished) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = (): void => {
+      res.off('finish', done);
+      res.off('close', done);
+      resolve();
+    };
+    res.once('finish', done);
+    res.once('close', done);
+    if (!res.writableEnded) res.end();
+  });
+}

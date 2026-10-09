@@ -282,6 +282,15 @@ export function registerControlApi(app: FastifyInstance, ctx: ControlContext): v
       } catch (error) {
         if (error instanceof ReplayLimitError)
           return fail(reply, 429, 'tokenfault_invalid_request', error.message);
+        // A recording that validates but cannot be turned into a replay plan is a client error.
+        if (error instanceof RangeError || error instanceof TypeError) {
+          return fail(
+            reply,
+            400,
+            'tokenfault_invalid_request',
+            `Recording cannot be replayed: ${error.message}`,
+          );
+        }
         throw error;
       }
     },

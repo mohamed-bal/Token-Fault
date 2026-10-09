@@ -20,12 +20,21 @@ export const RECORDING_SCHEMA_VERSION = 1;
 export const MAX_RECORDED_EVENTS = 100_000;
 export const MAX_RECORDED_CHUNKS = 200_000;
 export const MAX_RECORDED_ANNOTATIONS = 1_000;
+/** Field bounds, shared with `createRecording` so every exported recording validates. */
+export const RECORDING_BOUNDS = {
+  maxDurationMs: 30 * 24 * 60 * 60 * 1000,
+  maxEventType: 256,
+  maxEventId: 1_024,
+  maxEventData: 16 * 1024 * 1024,
+  maxChunkBase64: 64 * 1024 * 1024,
+  maxPath: 2_048,
+  maxHeaderName: 128,
+  maxHeaderValue: 4_096,
+  maxHeaders: 64,
+  maxText: 2_000,
+} as const;
 
-const ms = z
-  .number()
-  .finite()
-  .min(0)
-  .max(24 * 60 * 60 * 1000);
+const ms = z.number().finite().min(0).max(RECORDING_BOUNDS.maxDurationMs);
 const nullableMs = ms.nullable();
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const shortText = z.string().max(2_000);
@@ -79,8 +88,19 @@ const MetricsSchema = z.strictObject({
 export const RecordedEventSchema = z.strictObject({
   seq: count,
   atMs: ms,
-  event: z.string().max(256),
-  id: z.string().max(1_024).nullable(),
+  // Values that would break SSE framing on replay are rejected.
+  event: z
+    .string()
+    .max(RECORDING_BOUNDS.maxEventType)
+    .refine((v) => !/[\r\n]/.test(v), 'event type must not contain line breaks'),
+  id: z
+    .string()
+    .max(RECORDING_BOUNDS.maxEventId)
+    .refine(
+      (v) => !/[\r\n]/.test(v) && !v.includes('\u0000'),
+      'id must not contain line breaks or U+0000',
+    )
+    .nullable(),
   retry: count.nullable(),
   /** Event data: original when payloads are included, a redacted skeleton otherwise. */
   data: z.string().max(16 * 1024 * 1024),
@@ -93,7 +113,13 @@ export const RecordedChunkSchema = z.strictObject({
   seq: count,
   atMs: ms,
   byteLength: count,
-  dataBase64: z.string().max(64 * 1024 * 1024),
+  dataBase64: z
+    .string()
+    .max(RECORDING_BOUNDS.maxChunkBase64)
+    .refine(
+      (v) => v.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(v),
+      'dataBase64 is not valid base64',
+    ),
 });
 
 export const RecordedAnnotationSchema = z.strictObject({
@@ -114,7 +140,8 @@ export const RecordingSchema = z
       source: z.enum(['proxy', 'replay']),
       method: z.string().regex(/^[A-Z]{1,16}$/),
       path: z.string().max(2_048),
-      status: z.number().int().min(100).max(599).nullable(),
+      // Node accepts any three-digit status from an upstream.
+      status: z.number().int().min(100).max(999).nullable(),
       responseHeaders: z.record(z.string().max(128), z.string().max(4_096)),
       request: z.strictObject({
         model: z.string().max(256).nullable(),
@@ -160,6 +187,17 @@ export const RecordingSchema = z
     }
     checkMonotonic(rec.events, 'events', ctx);
     checkMonotonic(rec.chunks, 'chunks', ctx);
+    for (const [i, chunk] of rec.chunks.entries()) {
+      const padding = chunk.dataBase64.endsWith('==') ? 2 : chunk.dataBase64.endsWith('=') ? 1 : 0;
+      if ((chunk.dataBase64.length / 4) * 3 - padding !== chunk.byteLength) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['chunks', i, 'byteLength'],
+          message: 'byteLength does not match the decoded data length',
+        });
+        return;
+      }
+    }
   });
 
 function checkMonotonic(

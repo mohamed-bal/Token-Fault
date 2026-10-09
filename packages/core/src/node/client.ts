@@ -29,6 +29,8 @@ export interface StreamRequestOptions {
   /** Abort if the whole exchange takes longer. Default 30 s. */
   readonly timeoutMs?: number;
   readonly capturePayloads?: boolean;
+  /** Maximum raw body bytes retained in `body` (later bytes are still inspected). Default 64 MiB. */
+  readonly maxBodyBytes?: number;
   /** Called with newly decoded events/diagnostics as they arrive (for live display). */
   readonly onUpdate?: (update: InspectorUpdate, atMs: number) => void;
   /** Called once response headers arrive. */
@@ -45,8 +47,10 @@ export interface StreamResult {
   readonly termination: Termination;
   /** Concatenated content of choice 0 (empty if none). */
   readonly text: string;
-  /** Raw body bytes as received (all chunks concatenated). */
+  /** Raw body bytes as received (all chunks concatenated, up to `maxBodyBytes`). */
   readonly body: Uint8Array;
+  /** True if the body exceeded `maxBodyBytes` and `body` holds only its beginning. */
+  readonly bodyTruncated: boolean;
   /** The inspector that processed the response (e.g. to build a recording). */
   readonly inspector: StreamInspector;
 }
@@ -71,6 +75,9 @@ export function streamRequest(
 
   const inspector = new StreamInspector({ capturePayloads: options.capturePayloads ?? true });
   const received: Uint8Array[] = [];
+  const maxBodyBytes = options.maxBodyBytes ?? 64 * 1024 * 1024;
+  let receivedBytes = 0;
+  let bodyTruncated = false;
   const started = performance.now();
   const now = (): number => performance.now() - started;
   const controller = new AbortController();
@@ -100,6 +107,7 @@ export function streamRequest(
         termination,
         text: snapshot.choices[0]?.content ?? '',
         body: concat(received),
+        bodyTruncated,
         inspector,
       });
     };
@@ -119,7 +127,12 @@ export function streamRequest(
       options.onHeaders?.(res.statusCode ?? 0, res.headers, headersAt);
       res.on('data', (chunk: Buffer) => {
         const bytes = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength).slice();
-        received.push(bytes);
+        if (receivedBytes + bytes.length <= maxBodyBytes) {
+          received.push(bytes);
+          receivedBytes += bytes.length;
+        } else {
+          bodyTruncated = true;
+        }
         const at = now();
         const update = inspector.onChunk(bytes, at);
         if (update.events.length > 0 || update.diagnostics.length > 0)

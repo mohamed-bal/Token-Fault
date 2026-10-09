@@ -627,3 +627,82 @@ describe('proxy security boundaries', () => {
     });
   });
 });
+
+describe('review regressions', () => {
+  const rawStatus = (url: string, lines: string[]) =>
+    new Promise<string>((resolve) => {
+      const { port } = new URL(url);
+      const socket = connect(Number(port), '127.0.0.1', () => socket.write(lines.join('\r\n')));
+      let data = '';
+      socket.on('data', (d) => (data += d.toString()));
+      socket.on('end', () => resolve(data.slice(9, 12)));
+    });
+
+  it('percent-encoded and absolute-form control paths cannot bypass the control-plane guard', async () => {
+    const up = await upstream((_req, res) => void res.end('ok'));
+    const proxy = await proxyTo(up);
+    const { port } = new URL(proxy.url);
+    const body = '{"scenarioId":"mid-stream-disconnect"}';
+    expect(
+      await rawStatus(proxy.url, [
+        'GET /%5F%5Ftokenfault/api/info HTTP/1.1',
+        'Host: localhost',
+        'Sec-Fetch-Site: cross-site',
+        'Connection: close',
+        '',
+        '',
+      ]),
+    ).toBe('403');
+    expect(
+      await rawStatus(proxy.url, [
+        'PUT /%5F%5Ftokenfault/api/faults HTTP/1.1',
+        'Host: localhost',
+        'Origin: http://evil.example',
+        'Content-Type: text/plain',
+        `Content-Length: ${body.length}`,
+        'Connection: close',
+        '',
+        body,
+      ]),
+    ).toBe('403');
+    expect(
+      await rawStatus(proxy.url, [
+        'GET /%5f%5ftokenfault/api/info HTTP/1.1',
+        'Host: attacker.example',
+        'Connection: close',
+        '',
+        '',
+      ]),
+    ).toBe('403');
+    expect(
+      await rawStatus(proxy.url, [
+        `GET http://127.0.0.1:${port}/__tokenfault/api/info HTTP/1.1`,
+        `Host: 127.0.0.1:${port}`,
+        'Connection: close',
+        '',
+        '',
+      ]),
+    ).toBe('400');
+    expect((await proxy.control.info()).activeFaults).toBeNull();
+    expect(up.requests).toHaveLength(0);
+  });
+
+  it('an injected stall longer than the idle timeout does not blame a healthy upstream', async () => {
+    const up = await upstream(async (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      for (let i = 0; i < 8; i++) {
+        res.write(sseChunk(`t${i}`));
+        await sleep(100);
+      }
+      res.end(sseChunk('', 'stop') + 'data: [DONE]\n\n');
+    });
+    const proxy = await proxyTo(up, {
+      idleTimeoutMs: 300,
+      faults: { faults: [{ type: 'stall', afterEvents: 2, durationMs: 700 }] },
+    });
+    const result = await streamRequest(`${proxy.url}/v1/chat/completions`, { body: {} });
+    expect(result.termination.kind).toBe('eof');
+    expect(result.snapshot.outcome).toBe('completed');
+    expect(result.snapshot.metrics.eventCount).toBe(10);
+  });
+});

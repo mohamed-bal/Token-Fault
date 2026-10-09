@@ -200,9 +200,10 @@ export class SseDecoder {
         if (this.head === this.tail) return;
         this.skipLf = false;
         if (this.buf[this.head] === LF) {
+          // The LF of a CRLF is not counted towards the block size: whether it is consumed here
+          // or later depends on chunk boundaries, and the size limit must not.
           this.head += 1;
           this.offset += 1;
-          if (this.blockStart !== null) this.blockBytes += 1;
         }
       }
       const terminator = this.findTerminator();
@@ -245,19 +246,19 @@ export class SseDecoder {
       return;
     }
     if (this.blockBytes + pending > this.maxEventBytes) {
-      this.enterDiscard(out, this.blockStart ?? this.offset, this.blockBytes + pending);
+      this.enterDiscard(out, this.blockStart ?? this.offset);
       this.discardLineHasBytes = pending > 0;
       this.offset += pending;
       this.head = this.tail = 0;
     }
   }
 
-  private enterDiscard(out: SseItem[], startOffset: number, bytes: number): void {
+  private enterDiscard(out: SseItem[], startOffset: number): void {
     out.push(
       diag(
         'sse-event-too-large',
         'error',
-        `Event block starting at offset ${startOffset} exceeded maxEventBytes (${this.maxEventBytes}); ${bytes}+ bytes discarded until the next blank line.`,
+        `Event block starting at offset ${startOffset} exceeded maxEventBytes (${this.maxEventBytes}); discarded until the next blank line.`,
         startOffset,
       ),
     );
@@ -310,7 +311,7 @@ export class SseDecoder {
     }
     this.blockBytes += rawLength;
     if (this.blockBytes > this.maxEventBytes) {
-      this.enterDiscard(out, this.blockStart, this.blockBytes);
+      this.enterDiscard(out, this.blockStart);
       return;
     }
 

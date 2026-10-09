@@ -15,23 +15,38 @@ export interface FaultSink {
   annotate(faultType: FaultType, message: string): void;
 }
 
+/** Largest delay a single Node/browser timer supports. */
+const MAX_TIMER_MS = 2_147_483_647;
+
 /**
  * Resolves `true` after `ms`, or `false` as soon as `signal` aborts. Never
  * rejects, so callers cannot leak an unhandled rejection from a cancelled wait.
  */
 export function sleep(ms: number, signal?: AbortSignal): Promise<boolean> {
   if (signal?.aborted) return Promise.resolve(false);
-  if (ms <= 0) return Promise.resolve(true);
+  if (!(ms > 0)) return Promise.resolve(true);
   return new Promise((resolve) => {
+    let remaining = ms;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const onAbort = (): void => {
       clearTimeout(timer);
       resolve(false);
     };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve(true);
-    }, ms);
+    // Timers overflow above 2^31-1 ms (about 24.8 days) and would fire after 1 ms; long waits are chained.
+    const schedule = (): void => {
+      const step = Math.min(remaining, MAX_TIMER_MS);
+      timer = setTimeout(() => {
+        remaining -= step;
+        if (remaining > 0) {
+          schedule();
+          return;
+        }
+        signal?.removeEventListener('abort', onAbort);
+        resolve(true);
+      }, step);
+    };
     signal?.addEventListener('abort', onAbort, { once: true });
+    schedule();
   });
 }
 

@@ -2,7 +2,7 @@
 
 - **Scope:** TokenFault v0.1.0 (proxy, mock, CLI, Studio, recordings).
 - **Method:** asset- and entry-point-driven review. Each mitigation links to the code or test that implements it.
-- **Status:** internal review only. No external audit has been performed.
+- **Status:** internal review only, including one adversarial code review (findings fixed; see T19, T20 and IMPLEMENTATION_STATUS). No external audit has been performed.
 
 ## 1. Assets
 
@@ -47,6 +47,9 @@
 | T16 | **Downgrade / MITM to upstream**                                                          | Node's TLS verification is never disabled. There is no option to disable it.                                                                                                                                                                                     | `proxy-handler.ts` (default `https.request`)                                                                                                                                          |
 | T17 | **Response splitting / header injection**                                                 | Request targets with control characters are rejected. Headers are forwarded through Node's validating `writeHead`. Hop-by-hop and `Connection`-listed headers are stripped.                                                                                      | `target.ts`, `headers.ts`; tests                                                                                                                                                      |
 | T18 | **Spoofed TokenFault headers** from upstream                                              | All `x-tokenfault-*` response headers from upstream are dropped before the proxy adds its own                                                                                                                                                                    | `headers.ts`; `target-headers.test.ts`                                                                                                                                                |
+
+| T19 | **Control-plane guard bypass via encoded or absolute-form paths** (`/%5F%5Ftokenfault/api/...` is percent-decoded by the router; `GET http://host/__tokenfault/...`) | A request counts as control-plane if the matched route, the raw path or the percent-decoded path carries the prefix. Absolute-form request targets are rejected with 400. _Found by the internal review and fixed._ | `server.ts` (`isControlRequest`); `proxy.test.ts` ("review regressions") |
+| T20 | **Unexportable sessions**: upstream values outside recording bounds (huge `id`/`event`, status > 599) break export, replay and recording | `createRecording` clamps every upstream-controlled field to the schema bounds. The schema rejects values that would break SSE framing on replay, as well as invalid base64 or length mismatches. _Found by the internal review and fixed._ | `recording.ts`, `schema.ts`; `review-regressions.test.ts` |
 
 ## 4. Residual risks (accepted or open)
 
