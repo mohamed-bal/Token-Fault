@@ -29,6 +29,7 @@
     "@tokenfault/mock-llm": "workspace:*",
     "@tokenfault/proxy": "workspace:*",
     "@tokenfault/shared": "workspace:*",
+    "@tokenfault/studio": "workspace:*",
     "zod": "^4.6.5"
   }
 }

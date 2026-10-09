@@ -19,7 +19,7 @@ import { request as httpRequest } from 'node:http';
 import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import type { FastifyBaseLogger, FastifyReply, FastifyRequest } from 'fastify';
-import { FaultPlanner, selectFaults, sleep } from '@tokenfault/core';
+import { FaultPlanner, findScenario, selectFaults, sleep } from '@tokenfault/core';
 import type { FaultSelection, FaultSpec } from '@tokenfault/core';
 import { ClientGoneError, FaultedResponseWriter, terminateResponse } from '@tokenfault/core/node';
 import {
@@ -126,12 +126,21 @@ export async function handleProxyRequest(
     );
     return;
   }
-  const selection = selectFaults(
-    { scenario: request.headers[SCENARIO_HEADER], faults: request.headers[FAULTS_HEADER] },
-    'proxy',
-    ctx.activeFaults(),
-    ctx.limits.maxFaultHeaderBytes,
-  );
+  // A per-request scenario that only the mock server can apply (it shapes generated content)
+  // is delegated: the proxy applies no faults itself and forwards the scenario header upstream.
+  const requestedScenario = request.headers[SCENARIO_HEADER];
+  const mockOnly =
+    typeof requestedScenario === 'string' ? findScenario(requestedScenario.trim()) : undefined;
+  const delegatedScenario =
+    mockOnly && !mockOnly.descriptor.appliesTo.includes('proxy') ? mockOnly.descriptor.id : null;
+  const selection = delegatedScenario
+    ? ({ ok: true, value: null } as const)
+    : selectFaults(
+        { scenario: requestedScenario, faults: request.headers[FAULTS_HEADER] },
+        'proxy',
+        ctx.activeFaults(),
+        ctx.limits.maxFaultHeaderBytes,
+      );
   if (!selection.ok) {
     await sendError(
       reply,
@@ -151,7 +160,7 @@ export async function handleProxyRequest(
       startedAt: new Date().toISOString(),
       method: request.method,
       path: redactPathQuery(rawUrl),
-      scenarioId: selection.value?.scenarioId ?? null,
+      scenarioId: delegatedScenario ?? selection.value?.scenarioId ?? null,
       faults,
       request: extractRequestMeta(body, request.headers['content-type']),
       replayOf: null,
@@ -168,6 +177,7 @@ export async function handleProxyRequest(
     upstreamUrl,
     body,
     new FaultPlanner(selection.value?.profile ?? EMPTY_PROFILE),
+    delegatedScenario,
   );
   await exchange.run();
 }
@@ -190,6 +200,7 @@ class ProxyExchange {
     private readonly upstreamUrl: URL,
     private readonly body: Buffer,
     private readonly planner: FaultPlanner,
+    private readonly delegatedScenario: string | null,
   ) {
     res.on('close', () => {
       if (!res.writableFinished) this.clientController.abort();
@@ -276,6 +287,13 @@ class ProxyExchange {
 
   private openUpstream(): Promise<IncomingMessage | null> {
     const headers = forwardRequestHeaders(this.request.headers, this.body.length);
+    if (this.delegatedScenario !== null) {
+      headers[SCENARIO_HEADER] = this.delegatedScenario;
+      this.annotate(
+        'delegated',
+        `Scenario "${this.delegatedScenario}" is applied by the upstream mock server, not by the proxy.`,
+      );
+    }
     const requestFn = this.upstreamUrl.protocol === 'https:' ? httpsRequest : httpRequest;
     this.headersTimer = setTimeout(() => this.timeout('headers'), this.ctx.headersTimeoutMs);
 

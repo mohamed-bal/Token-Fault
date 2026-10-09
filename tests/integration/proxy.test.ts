@@ -75,14 +75,32 @@ describe('proxy + mock: full lifecycle', () => {
     expect(JSON.stringify(detail)).not.toContain('Hello from the TokenFault test suite');
   });
 
-  it('returns proxy-applicable scenarios and rejects mock-only scenarios', async () => {
+  it('delegates mock-only scenarios to the upstream mock', async () => {
     const result = await streamChatCompletion(stack.proxy.url, {
       scenario: 'fragmented-tool-calls',
     });
-    expect(result.status).toBe(400);
-    expect(JSON.parse(new TextDecoder().decode(result.body)).error.code).toBe(
+    expect(result.status).toBe(200);
+    const call = result.snapshot.choices[0]?.toolCalls[0];
+    expect(call?.fragmentCount).toBeGreaterThan(10);
+    expect(call?.argumentsValidJson).toBe(true);
+    const id = result.headers['x-tokenfault-session'] as string;
+    await waitForSession(stack.proxy.control, id);
+    const detail = await stack.proxy.control.session(id);
+    expect(detail.scenarioId).toBe('fragmented-tool-calls');
+    expect(detail.faults).toEqual([]);
+    expect(detail.annotations.map((a) => a.faultType)).toEqual(['delegated']);
+  });
+
+  it('rejects unknown scenarios and invalid fault headers', async () => {
+    const unknown = await streamChatCompletion(stack.proxy.url, { scenario: 'nope' });
+    expect(unknown.status).toBe(400);
+    expect(JSON.parse(new TextDecoder().decode(unknown.body)).error.code).toBe(
       'tokenfault_invalid_request',
     );
+    const mockOnlyFault = await streamChatCompletion(stack.proxy.url, {
+      faults: { faults: [{ type: 'fragment-tool-calls', chunkChars: 2 }] },
+    });
+    expect(mockOnlyFault.status).toBe(400);
   });
 
   it('B: disconnect through the proxy resets the client after exactly 5 events', async () => {

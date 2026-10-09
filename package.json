@@ -2,7 +2,7 @@
   "name": "tokenfault-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "TokenFault — debugging, observability and fault-injection toolkit for AI streaming applications.",
+  "description": "TokenFault \u2014 debugging, observability and fault-injection toolkit for AI streaming applications.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "pnpm -r --workspace-concurrency=1 run build",
-    "typecheck": "tsc -b && pnpm -r --parallel run typecheck",
+    "typecheck": "tsc -b && pnpm -r --parallel run typecheck && tsc -p tests/e2e/tsconfig.json && tsc -p tsconfig.tools.json",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,7 +20,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "smoke": "node scripts/cli-smoke.mjs",
-    "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm smoke",
+    "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm smoke && pnpm test:e2e",
     "clean": "pnpm -r exec rm -rf dist tsconfig.build.tsbuildinfo tsconfig.tsbuildinfo"
   },
   "devDependencies": {

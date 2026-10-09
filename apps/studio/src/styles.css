@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #0b0d10;
+  --color-surface: #111418;
+  --color-surface-2: #171b21;
+  --color-surface-3: #1e232b;
+  --color-line: #262c35;
+  --color-line-strong: #343b46;
+  --color-fg: #e6e8eb;
+  --color-muted: #8c95a3;
+  --color-faint: #5d6573;
+  --color-accent: #7c9cff;
+  --color-accent-strong: #9db4ff;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-err: #f87171;
+  --color-info: #60a5fa;
+  --color-tool: #c084fc;
+  --color-orange: #fb923c;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-line bg-surface;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line-strong bg-surface-2 px-2.5 py-1.5 text-[12px] font-medium text-fg transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-accent/60 bg-accent/15 text-accent-strong hover:bg-accent/25;
+  }
+  .btn-danger {
+    @apply border-err/50 bg-err/10 text-err hover:bg-err/20;
+  }
+  .input {
+    @apply rounded-md border border-line-strong bg-bg px-2 py-1.5 text-[12px] text-fg placeholder:text-faint focus:border-accent focus:outline-none;
+  }
+  .label {
+    @apply text-[11px] font-medium tracking-wide text-muted uppercase;
+  }
+  .mono {
+    @apply font-mono text-[12px];
+  }
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+}

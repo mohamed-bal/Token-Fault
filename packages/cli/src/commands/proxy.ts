@@ -136,9 +136,9 @@ export async function runProxy(argv: readonly string[]): Promise<number> {
 
   out(`${style.green('●')} TokenFault proxy listening on ${style.bold(url)}`);
   out(`  target   ${targetDisplay}${mock ? style.dim(' (embedded mock)') : ''}`);
-  out(
-    `  base URL ${url}${style.dim('  ← set this as your OpenAI-compatible base URL (append /v1 if your SDK expects it)')}`,
-  );
+  // OpenAI SDKs expect a base URL ending in /v1; the proxy appends request paths to the target.
+  const sdkBase = /\/v1$/.test(new URL(targetDisplay).pathname) ? url : `${url}/v1`;
+  out(`  base URL ${sdkBase}${style.dim('  ← use as your OpenAI-compatible SDK base URL')}`);
   out(
     studioDir
       ? `  studio   ${style.cyan(`${url}${STUDIO_PREFIX}/`)}`
