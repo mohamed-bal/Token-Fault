@@ -1,9 +1,24 @@
 {
   "name": "@tokenfault/shared",
   "version": "0.1.0",
-  "private": true,
   "description": "Wire contracts, limits and redaction helpers shared by every TokenFault package (platform-agnostic, zero runtime dependencies).",
   "license": "MIT",
+  "author": "mohamed-bal",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohamed-bal/Token-Fault.git",
+    "directory": "packages/shared"
+  },
+  "homepage": "https://github.com/mohamed-bal/Token-Fault#readme",
+  "bugs": {
+    "url": "https://github.com/mohamed-bal/Token-Fault/issues"
+  },
+  "keywords": [
+    "tokenfault",
+    "sse",
+    "llm",
+    "redaction"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -13,10 +28,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -15,20 +15,33 @@ export function cliVersion(): string {
 }
 
 /**
- * Locates the built Studio bundle. Order: `TOKENFAULT_STUDIO_DIR`, then the
- * installed `@tokenfault/studio` package, then the monorepo checkout.
- * Returns `null` when no `index.html` is found (Studio disabled).
+ * Locates the built Studio bundle. Order:
+ * 1. `TOKENFAULT_STUDIO_DIR`;
+ * 2. `studio/` inside this package (copied at build time; what the published package ships);
+ * 3. `apps/studio/dist` of the TokenFault monorepo, only when that directory really belongs to
+ *    `@tokenfault/studio` (so an unrelated `apps/studio` next to an install is never served).
+ * Returns `null` when no `index.html` is found (Studio disabled). `moduleUrl` and `env` exist for tests.
  */
-export function findStudioDir(): string | null {
+export function findStudioDir(
+  moduleUrl: string = import.meta.url,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
   const candidates: string[] = [];
-  const fromEnv = process.env['TOKENFAULT_STUDIO_DIR'];
+  const fromEnv = env['TOKENFAULT_STUDIO_DIR'];
   if (fromEnv) candidates.push(path.resolve(fromEnv));
-  try {
-    const pkgJson = fileURLToPath(import.meta.resolve('@tokenfault/studio/package.json'));
-    candidates.push(path.join(path.dirname(pkgJson), 'dist'));
-  } catch {
-    // Not installed as a dependency.
-  }
-  candidates.push(fileURLToPath(new URL('../../../apps/studio/dist', import.meta.url)));
+  candidates.push(fileURLToPath(new URL('../studio', moduleUrl)));
+  const monorepoStudio = fileURLToPath(new URL('../../../apps/studio', moduleUrl));
+  if (isTokenFaultStudio(monorepoStudio)) candidates.push(path.join(monorepoStudio, 'dist'));
   return candidates.find((dir) => existsSync(path.join(dir, 'index.html'))) ?? null;
+}
+
+function isTokenFaultStudio(dir: string): boolean {
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+      name?: unknown;
+    };
+    return pkg.name === '@tokenfault/studio';
+  } catch {
+    return false;
+  }
 }

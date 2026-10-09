@@ -90,12 +90,13 @@ importers:
       '@tokenfault/shared':
         specifier: workspace:*
         version: link:../shared
-      '@tokenfault/studio':
-        specifier: workspace:*
-        version: link:../../apps/studio
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+    devDependencies:
+      '@tokenfault/studio':
+        specifier: workspace:*
+        version: link:../../apps/studio
 
   packages/core:
     dependencies:

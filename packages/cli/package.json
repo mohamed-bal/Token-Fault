@@ -1,9 +1,29 @@
 {
   "name": "tokenfault",
   "version": "0.1.0",
-  "private": true,
   "description": "TokenFault CLI: inspect, replay, break and harden AI streaming applications.",
   "license": "MIT",
+  "author": "mohamed-bal",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohamed-bal/Token-Fault.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/mohamed-bal/Token-Fault#readme",
+  "bugs": {
+    "url": "https://github.com/mohamed-bal/Token-Fault/issues"
+  },
+  "keywords": [
+    "tokenfault",
+    "cli",
+    "sse",
+    "openai",
+    "streaming",
+    "debugging",
+    "fault-injection",
+    "observability",
+    "llm"
+  ],
   "type": "module",
   "bin": {
     "tokenfault": "./dist/bin.js"
@@ -15,13 +35,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "studio"
   ],
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
-    "build": "tsc -b tsconfig.build.json && node ../../scripts/chmod-bin.mjs dist/bin.js",
+    "build": "tsc -b tsconfig.build.json && node ../../scripts/chmod-bin.mjs dist/bin.js && node ../../scripts/copy-studio.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -29,7 +51,9 @@
     "@tokenfault/mock-llm": "workspace:*",
     "@tokenfault/proxy": "workspace:*",
     "@tokenfault/shared": "workspace:*",
-    "@tokenfault/studio": "workspace:*",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tokenfault/studio": "workspace:*"
   }
 }
