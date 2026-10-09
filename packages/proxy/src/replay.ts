@@ -8,8 +8,12 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { createReplayPlan, runReplay } from '@tokenfault/core';
 import type { Recording, ReplayPlan } from '@tokenfault/core';
-import { terminateResponse, writeWithBackpressure } from '@tokenfault/core/node';
-import { SESSION_HEADER, describeError } from '@tokenfault/shared';
+import {
+  isLoopbackHostHeader,
+  terminateResponse,
+  writeWithBackpressure,
+} from '@tokenfault/core/node';
+import { SESSION_HEADER, describeError, errorBody } from '@tokenfault/shared';
 import type { ReplayTiming, TerminationKind } from '@tokenfault/shared';
 import type { SessionStore } from './session-store.js';
 
@@ -138,6 +142,11 @@ export interface ReplayServerOptions {
   readonly timing?: ReplayTiming;
   readonly host?: string;
   readonly port?: number;
+  /**
+   * Accept any `Host` header. Off by default: like the proxy, the replay server only answers
+   * loopback Host names, so a web page cannot read it through DNS rebinding (SEC-R4).
+   */
+  readonly allowRemote?: boolean;
 }
 
 export interface RunningReplayServer {
@@ -159,6 +168,21 @@ export async function startReplayServer(
   const app = Fastify({ logger: false, forceCloseConnections: true, bodyLimit: 20 * 1024 * 1024 });
   app.removeAllContentTypeParsers();
   app.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  if (options.allowRemote !== true) {
+    app.addHook('onRequest', async (request, reply) => {
+      if (!isLoopbackHostHeader(request.headers.host)) {
+        return reply
+          .code(403)
+          .send(
+            errorBody(
+              'tokenfault_forbidden',
+              'The replay server only accepts loopback Host headers (use --allow-remote to change this).',
+            ),
+          );
+      }
+      return undefined;
+    });
+  }
   app.get('/healthz', () => ({ status: 'ok' }));
 
   const paths = new Set(['/v1/chat/completions']);

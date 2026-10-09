@@ -106,6 +106,7 @@ export async function runReplayCommand(argv: readonly string[]): Promise<number>
       timing,
       host,
       port: intOption(values.port, 'port', 0, 65_535) ?? DEFAULT_REPLAY_PORT,
+      allowRemote: values['allow-remote'] === true,
     });
     out(
       `${style.green('●')} Replaying ${file} on ${style.bold(server.url)} (${server.plan.mode} mode, ${server.plan.steps.length} steps)`,

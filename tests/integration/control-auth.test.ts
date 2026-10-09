@@ -126,7 +126,10 @@ describe('control API authentication (default on)', () => {
         body: JSON.stringify({ token }),
       });
     for (let i = 0; i < 10; i++) expect((await attempt(`wrong-${i}`)).status).toBe(401);
-    expect((await attempt(TOKEN)).status).toBe(429);
+    // Further wrong guesses are throttled...
+    expect((await attempt('wrong-again')).status).toBe(429);
+    // ...but failing on purpose cannot lock the real user out (SEC-R2).
+    expect((await attempt(TOKEN)).status).toBe(200);
   });
 
   it('can be disabled explicitly, and the data path never needs the token', async () => {
@@ -175,5 +178,97 @@ describe('ControlAuth unit behaviour', () => {
     expect(auth.isAuthenticated({ cookie: `tf_session=${r.sessionId}` })).toBe(true);
     now += 12 * 60 * 60 * 1000 + 1;
     expect(auth.isAuthenticated({ cookie: `tf_session=${r.sessionId}` })).toBe(false);
+  });
+});
+
+describe('phase 3 security regressions', () => {
+  async function signIn(url: string): Promise<string> {
+    const res = await fetch(`${url}/__tokenfault/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: TOKEN }),
+    });
+    const cookie = res.headers.get('set-cookie') ?? '';
+    return cookie.split(';')[0]!;
+  }
+
+  it('SEC-R1: the live feed stops sending once the Studio session is logged out', async () => {
+    const proxy = await startProxy({ target: 'http://127.0.0.1:9', controlToken: TOKEN });
+    cleanups.push(() => proxy.close());
+    const cookie = await signIn(proxy.url);
+    const controller = new AbortController();
+    const live = await fetch(`${proxy.url}/__tokenfault/api/live`, {
+      headers: { cookie },
+      signal: controller.signal,
+    });
+    expect(live.status).toBe(200);
+    expect(live.headers.get('x-frame-options')).toBe('DENY');
+    const reader = live.body!.getReader();
+    await reader.read(); // snapshot
+    await fetch(`${proxy.url}/__tokenfault/api/auth/logout`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+    });
+    // Any store change after logout must not reach the old subscriber.
+    await streamChatCompletion(proxy.url, { scenario: 'rate-limit-429' });
+    let received = '';
+    const timeout = setTimeout(() => controller.abort(), 1_500);
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += new TextDecoder().decode(value);
+      }
+    } catch {
+      // aborted by the timeout: the stream stayed open, checked below
+    }
+    clearTimeout(timeout);
+    expect(received).toBe('');
+    expect(controller.signal.aborted).toBe(false); // the server closed the stream itself
+  });
+
+  it('SEC-R3: a planted tf_session cookie cannot shadow the real session', async () => {
+    const proxy = await startProxy({ target: 'http://127.0.0.1:9', controlToken: TOKEN });
+    cleanups.push(() => proxy.close());
+    const cookie = await signIn(proxy.url);
+    const res = await fetch(`${proxy.url}/__tokenfault/api/sessions`, {
+      headers: { cookie: `tf_session=planted_junk_value; ${cookie}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('SEC-R3: upstream Set-Cookie headers aimed at the control session are dropped', async () => {
+    const { startUpstream } = await import('./helpers.js');
+    const up = await startUpstream((_req, res) => {
+      res.setHeader('set-cookie', [
+        'tf_session=evil; Path=/__tokenfault/api',
+        'other=1; Path=/__tokenfault/api',
+        'app=kept; Path=/',
+      ]);
+      res.end('ok');
+    });
+    cleanups.push(() => up.close());
+    const proxy = await startProxy({ target: up.url, controlToken: TOKEN });
+    cleanups.push(() => proxy.close());
+    const res = await fetch(`${proxy.url}/v1/x`);
+    expect(res.headers.getSetCookie()).toEqual(['app=kept; Path=/']);
+  });
+
+  it('SEC-R5: the proxy bounds the time to receive a request but not to stream a response', () => {
+    const server = createTokenFaultServer({ target: 'http://127.0.0.1:9', controlToken: TOKEN });
+    expect(server.app.server.requestTimeout).toBe(120_000);
+  });
+});
+
+describe('ControlAuth: multiple session cookies', () => {
+  it('accepts a valid session among several tf_session values (SEC-R3)', () => {
+    const auth = new ControlAuth(TOKEN);
+    const result = auth.login(TOKEN);
+    if (!result.ok) throw new Error('login failed');
+    expect(
+      auth.isAuthenticated({ cookie: `tf_session=junk; tf_session=${result.sessionId}` }),
+    ).toBe(true);
+    auth.logout({ cookie: `tf_session=junk; tf_session=${result.sessionId}` });
+    expect(auth.isAuthenticated({ cookie: `tf_session=${result.sessionId}` })).toBe(false);
   });
 });

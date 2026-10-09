@@ -32,6 +32,7 @@ import type {
 } from '@tokenfault/shared';
 import { clearedSessionCookie, sessionCookie } from './control-auth.js';
 import type { ControlAuth } from './control-auth.js';
+import { SECURITY_HEADERS } from './headers.js';
 import { serveLiveFeed } from './live-feed.js';
 import { ReplayLimitError } from './replay.js';
 import type { ReplayManager } from './replay.js';
@@ -218,9 +219,15 @@ export function registerControlApi(app: FastifyInstance, ctx: ControlContext): v
     },
   );
 
-  app.get(`${API_PREFIX}/live`, (_request, reply) => {
+  app.get(`${API_PREFIX}/live`, (request, reply) => {
     reply.hijack();
-    serveLiveFeed(reply.raw, ctx.store, { maxBufferBytes: ctx.limits.maxSubscriberBufferBytes });
+    const auth = ctx.auth;
+    const headers = request.headers;
+    serveLiveFeed(reply.raw, ctx.store, {
+      maxBufferBytes: ctx.limits.maxSubscriberBufferBytes,
+      headers: SECURITY_HEADERS,
+      ...(auth ? { isAuthorized: () => auth.isAuthenticated(headers) } : {}),
+    });
   });
 
   app.get(`${API_PREFIX}/faults`, () => ({ activeFaults: toActiveFaults(ctx.getActive()) }));

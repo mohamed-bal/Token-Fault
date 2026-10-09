@@ -22,12 +22,16 @@ import {
 import type { Limits } from '@tokenfault/shared';
 import { ControlAuth, MIN_TOKEN_LENGTH, generateControlToken } from './control-auth.js';
 import { registerControlApi, toActiveFaults } from './control-api.js';
+import { SECURITY_HEADERS } from './headers.js';
 import { handleProxyRequest } from './proxy-handler.js';
 import { SessionRecorder } from './recorder.js';
 import { ReplayManager } from './replay.js';
 import { SessionStore } from './session-store.js';
 import { StaticRoot, openStaticFile } from './static-files.js';
 import { parseTarget } from './target.js';
+
+/** Upper bound on receiving one request, including a body of up to `maxRequestBodyBytes`. */
+const REQUEST_RECEIVE_TIMEOUT_MS = 120_000;
 
 /** This package's version, from its manifest (`src/` and `dist/` both sit next to it). */
 const PACKAGE_VERSION: string = (() => {
@@ -179,13 +183,6 @@ export interface TokenFaultServer {
   setActiveFaults(selection: FaultSelection | null): void;
 }
 
-const SECURITY_HEADERS = {
-  'x-content-type-options': 'nosniff',
-  'referrer-policy': 'no-referrer',
-  'x-frame-options': 'DENY',
-  'cross-origin-resource-policy': 'same-origin',
-} as const;
-
 const STUDIO_CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -313,8 +310,10 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
     bodyLimit: limits.maxRequestBodyBytes,
     genReqId: () => randomUUID(),
     forceCloseConnections: true,
-    // Headers timeout and keep-alive are handled per exchange; long streams must not be cut by Node defaults.
-    requestTimeout: 0,
+    // Time allowed to RECEIVE a request (headers and body), not to stream the response: long
+    // responses are unaffected. Without it an unfinished body held its socket and buffer
+    // forever (SEC-R5). Upstream headers/idle/total timeouts are handled per exchange.
+    requestTimeout: REQUEST_RECEIVE_TIMEOUT_MS,
     // Router-level errors (e.g. malformed percent-encoding) never echo the request path.
     frameworkErrors: (_error, _request, reply) => {
       // Raw response: the reply generic here is too narrow for a typed send().

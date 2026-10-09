@@ -14,6 +14,13 @@ import type { SessionStore } from './session-store.js';
 export interface LiveFeedOptions {
   readonly maxBufferBytes: number;
   readonly heartbeatMs?: number;
+  /**
+   * Re-checked before every write. When it returns false (the Studio signed out or its
+   * session expired), the stream is closed without sending anything more (SEC-R1).
+   */
+  readonly isAuthorized?: () => boolean;
+  /** Extra response headers (the control plane's security headers). */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export function serveLiveFeed(
@@ -22,6 +29,7 @@ export function serveLiveFeed(
   options: LiveFeedOptions,
 ): void {
   res.writeHead(200, {
+    ...options.headers,
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-cache, no-store',
     'x-content-type-options': 'nosniff',
@@ -31,6 +39,11 @@ export function serveLiveFeed(
   let closed = false;
   const send = (text: string): void => {
     if (closed) return;
+    if (options.isAuthorized && !options.isAuthorized()) {
+      cleanup();
+      res.destroy();
+      return;
+    }
     if (res.writableLength > options.maxBufferBytes) {
       cleanup();
       res.destroy();

@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { connect } from 'node:net';
+import { request as httpRequest } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parseRecording } from '@tokenfault/core';
 import { startReplayServer } from '@tokenfault/proxy';
@@ -205,5 +206,48 @@ describe('Studio static file serving', () => {
     });
     expect(browser.status).toBe(302);
     expect(browser.headers.get('location')).toBe('/__tokenfault/studio/');
+  });
+});
+
+describe('replay server Host check (SEC-R4)', () => {
+  let stack: Stack;
+  beforeAll(async () => {
+    stack = await startStack();
+  });
+  afterAll(() => stack.close());
+
+  it('refuses non-loopback Host headers', async () => {
+    const original = await streamChatCompletion(stack.proxy.url, { prompt: 'rebind' });
+    const id = original.headers['x-tokenfault-session'] as string;
+    await waitForSession(stack.proxy.control, id);
+    const parsed = parseRecording(await stack.proxy.control.recording(id, true), 32 * 1024 * 1024);
+    if (!parsed.ok) throw new Error(parsed.error);
+    const replay = await startReplayServer({ recording: parsed.recording });
+    try {
+      const { port } = new URL(replay.url);
+      const status = (host: string) =>
+        new Promise<number>((resolve, reject) => {
+          const req = httpRequest(
+            {
+              host: '127.0.0.1',
+              port,
+              path: '/v1/chat/completions',
+              method: 'POST',
+              headers: { host },
+            },
+            (res) => {
+              res.resume();
+              resolve(res.statusCode ?? 0);
+            },
+          );
+          req.on('error', reject);
+          req.end('{}');
+        });
+      expect(await status('rebind.attacker.example')).toBe(403);
+      expect(await status(`127.0.0.1:${port}`)).toBe(200);
+      expect(await status(`localhost:${port}`)).toBe(200);
+    } finally {
+      await replay.close();
+    }
   });
 });

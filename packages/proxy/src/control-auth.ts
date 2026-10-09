@@ -57,16 +57,21 @@ export class ControlAuth {
     if (typeof authorization === 'string' && authorization.startsWith('Bearer ')) {
       if (safeEqual(authorization.slice(7).trim(), this.token)) return true;
     }
-    const sessionId = readCookie(headers.cookie, SESSION_COOKIE);
-    return sessionId !== null && this.isValidSession(sessionId);
+    // Every `tf_session` value counts: another page on 127.0.0.1 (cookies ignore ports) can
+    // plant a same-named cookie with a more specific path that sorts first (SEC-R3).
+    return readCookies(headers.cookie, SESSION_COOKIE).some((id) => this.isValidSession(id));
   }
 
   login(candidate: string): LoginResult {
     const t = this.now();
     this.failures = this.failures.filter((f) => t - f < FAILURE_WINDOW_MS);
-    if (this.failures.length >= MAX_FAILURES_PER_WINDOW)
+    // The correct token always signs in: the limiter only throttles wrong guesses, so another
+    // local process cannot lock the user out by failing on purpose (SEC-R2). Guessing a
+    // 256-bit token stays infeasible either way.
+    const valid = safeEqual(candidate, this.token);
+    if (!valid && this.failures.length >= MAX_FAILURES_PER_WINDOW)
       return { ok: false, reason: 'rate-limited' };
-    if (!safeEqual(candidate, this.token)) {
+    if (!valid) {
       this.failures.push(t);
       return { ok: false, reason: 'invalid' };
     }
@@ -82,8 +87,7 @@ export class ControlAuth {
   }
 
   logout(headers: IncomingHttpHeaders): void {
-    const sessionId = readCookie(headers.cookie, SESSION_COOKIE);
-    if (sessionId !== null) this.sessions.delete(sessionId);
+    for (const id of readCookies(headers.cookie, SESSION_COOKIE)) this.sessions.delete(id);
   }
 
   private isValidSession(sessionId: string): boolean {
@@ -110,16 +114,24 @@ export function clearedSessionCookie(): string {
   return `${SESSION_COOKIE}=; Path=/__tokenfault; HttpOnly; SameSite=Strict; Max-Age=0`;
 }
 
+const MAX_COOKIE_VALUES = 8;
+const COOKIE_VALUE = /^[A-Za-z0-9_-]{1,128}$/;
+
 /** Minimal RFC 6265 cookie lookup (first match wins). */
 export function readCookie(header: string | undefined, name: string): string | null {
-  if (!header) return null;
+  return readCookies(header, name)[0] ?? null;
+}
+
+/** All well-formed values of a cookie name, in header order (at most 8). */
+export function readCookies(header: string | undefined, name: string): string[] {
+  if (!header) return [];
+  const values: string[] = [];
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
-    if (eq === -1) continue;
-    if (part.slice(0, eq).trim() === name) {
-      const value = part.slice(eq + 1).trim();
-      return /^[A-Za-z0-9_-]{1,128}$/.test(value) ? value : null;
-    }
+    if (eq === -1 || part.slice(0, eq).trim() !== name) continue;
+    const value = part.slice(eq + 1).trim();
+    if (COOKIE_VALUE.test(value)) values.push(value);
+    if (values.length >= MAX_COOKIE_VALUES) break;
   }
-  return null;
+  return values;
 }

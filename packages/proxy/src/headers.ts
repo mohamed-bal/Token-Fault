@@ -88,6 +88,23 @@ export const RESPONSE_ISOLATION_HEADERS: Readonly<Record<string, string>> = Obje
   'x-content-type-options': 'nosniff',
 });
 
+/**
+ * True for an upstream `Set-Cookie` that could interfere with the Studio session: the control
+ * cookie's name, or any cookie scoped to the control prefix (SEC-R3).
+ */
+function targetsControlCookie(setCookie: string): boolean {
+  const name = setCookie.slice(0, Math.max(0, setCookie.indexOf('='))).trim();
+  return name === 'tf_session' || /;\s*path\s*=\s*\/__tokenfault/i.test(setCookie);
+}
+
+/** Security headers for every control-plane and Studio response (including the live feed). */
+export const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'x-frame-options': 'DENY',
+  'cross-origin-resource-policy': 'same-origin',
+} as const;
+
 export function forwardResponseHeaders(incoming: IncomingHttpHeaders): OutgoingHttpHeaders {
   const listed = connectionListed(incoming);
   const out: OutgoingHttpHeaders = {};
@@ -101,6 +118,13 @@ export function forwardResponseHeaders(incoming: IncomingHttpHeaders): OutgoingH
       lower.startsWith(HEADER_PREFIX)
     )
       continue;
+    if (lower === 'set-cookie') {
+      const kept = (Array.isArray(value) ? value : [String(value)]).filter(
+        (c) => !targetsControlCookie(c),
+      );
+      if (kept.length > 0) out[lower] = kept;
+      continue;
+    }
     out[lower] = value;
   }
   // An upstream CSP is kept: comma-separated policies are all enforced (they intersect), so
