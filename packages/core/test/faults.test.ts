@@ -420,3 +420,31 @@ describe('WaitPacer (coarse timers)', () => {
     expect(order).toEqual(['io-turn', 'after-wait']);
   });
 });
+
+describe('executeFaultActions: per-gap minimums', () => {
+  const noopSink: FaultSink = {
+    write: () => Promise.resolve(),
+    disconnect: () => undefined,
+    annotate: () => undefined,
+  };
+
+  it('never shortens a jitter or stall wait with overshoot carried from fragmentation gaps', async () => {
+    // A clock on which every sleep "took" 15.6 ms creates ~14.6 ms of credit after one 1 ms gap.
+    let t = 0;
+    let calls = 0;
+    const pacer = new WaitPacer(() => (calls++ % 2 === 1 ? (t += 15.6) : t));
+    const controller = new AbortController();
+    const started = performance.now();
+    await executeFaultActions(
+      [
+        { kind: 'wait', ms: 1, faultType: 'fragment' },
+        { kind: 'wait', ms: 20, faultType: 'jitter' },
+      ],
+      noopSink,
+      controller.signal,
+      pacer,
+    );
+    // The jitter gap is slept in full (minus timer rounding), not reduced to ~5 ms.
+    expect(performance.now() - started).toBeGreaterThanOrEqual(19);
+  });
+});

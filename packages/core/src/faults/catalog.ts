@@ -164,7 +164,7 @@ export const FAULT_TYPES: readonly FaultTypeDescriptor[] = [
     type: 'fragment',
     title: 'Fragmented SSE',
     description:
-      'Re-chunks every frame into seeded pseudo-random pieces of [minChunkBytes, maxChunkBytes] bytes, written separately with a short delay so they arrive as separate network reads. Multi-byte UTF-8 characters are split as well.',
+      'Re-chunks every frame into seeded pseudo-random pieces of [minChunkBytes, maxChunkBytes] bytes, written separately with a short delay so they arrive as separate network reads. Multi-byte UTF-8 characters are split as well. The delay is kept on average: on platforms with coarse timers (Windows, about 15.6 ms) individual gaps can be shorter so the stream does not slow down.',
     phase: 'stream',
     appliesTo: ['proxy', 'mock'],
     params: [

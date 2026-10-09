@@ -15,7 +15,6 @@ import {
   parseFaultProfile,
   selectFaults,
   sleep,
-  WaitPacer,
 } from '@tokenfault/core';
 import type { FaultProfileInput, FaultSelection, FaultSpec } from '@tokenfault/core';
 import { FaultedResponseWriter } from '@tokenfault/core/node';
@@ -262,10 +261,9 @@ export function buildMockLlmServer(options: MockLlmOptions = {}): FastifyInstanc
     try {
       const frames = streamFrames(plan, body.stream_options?.include_usage === true);
       const encoder = new TextEncoder();
-      // Paced, so the configured interval holds on coarse-timer platforms (Windows).
-      const pacer = new WaitPacer();
+      // A minimum gap between events: slept in full (never shortened by earlier timer overshoot).
       for (const [index, frame] of frames.entries()) {
-        if (index > 0 && !(await pacer.wait(interval, controller.signal))) return;
+        if (index > 0 && !(await sleep(interval, controller.signal))) return;
         if (!(await writer.push(encoder.encode(frame)))) return;
       }
       if (!(await writer.end())) return;

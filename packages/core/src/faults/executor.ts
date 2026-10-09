@@ -69,11 +69,20 @@ const yieldTurn: () => Promise<void> = (() => {
  * the total injected delay matches the profile. Waits that are fully paid off by earlier
  * overshoot still yield one event-loop turn, so consecutive writes stay separate writes.
  * Use one pacer per stream.
+ *
+ * Pacing shortens individual waits, so it is only used where the contract is a rate rather
+ * than a per-gap minimum: fragmentation gaps. Jitter, stalls and delays promise a minimum per
+ * gap and are always slept in full (see `executeFaultActions`).
  */
 export class WaitPacer {
   private debtMs = 0;
 
   constructor(private readonly clock: () => number = () => performance.now()) {}
+
+  /** Forgets carried overshoot, e.g. after a wait that was slept in full. */
+  reset(): void {
+    this.debtMs = 0;
+  }
 
   /** Resolves `true` after (about) `ms`, or `false` as soon as `signal` aborts. */
   async wait(ms: number, signal?: AbortSignal): Promise<boolean> {
@@ -96,7 +105,7 @@ export type ExecutionResult = 'open' | 'disconnected' | 'aborted';
 
 /**
  * Runs actions in order. Stops early on disconnect or abort. Pass the same `pacer` for every
- * call on one stream so timer overshoot does not accumulate across frames.
+ * call on one stream so timer overshoot of fragmentation gaps does not accumulate across frames.
  */
 export async function executeFaultActions(
   actions: readonly FaultAction[],
@@ -108,7 +117,13 @@ export async function executeFaultActions(
     if (signal.aborted) return 'aborted';
     switch (action.kind) {
       case 'wait':
-        if (!(await pacer.wait(action.ms, signal))) return 'aborted';
+        if (action.faultType === 'fragment') {
+          if (!(await pacer.wait(action.ms, signal))) return 'aborted';
+        } else {
+          // A minimum per gap (jitter, stall, delays): never shortened by earlier overshoot.
+          pacer.reset();
+          if (!(await sleep(action.ms, signal))) return 'aborted';
+        }
         break;
       case 'write':
         await sink.write(action.bytes, action.injected);
