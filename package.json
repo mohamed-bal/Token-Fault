@@ -2,7 +2,7 @@
   "name": "tokenfault-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "TokenFault \u2014 debugging, observability and fault-injection toolkit for AI streaming applications.",
+  "description": "TokenFault — debugging, observability and fault-injection toolkit for AI streaming applications.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.28.0",
@@ -22,7 +22,8 @@
     "test:e2e": "playwright test",
     "smoke": "node scripts/cli-smoke.mjs",
     "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm smoke && pnpm test:e2e",
-    "clean": "pnpm -r exec node ../../scripts/clean.mjs"
+    "clean": "pnpm -r exec node ../../scripts/clean.mjs",
+    "bench": "node --expose-gc bench/run.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
