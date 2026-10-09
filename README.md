@@ -47,7 +47,8 @@ pnpm build
 pnpm tokenfault proxy --mock
 ```
 
-Open the Studio URL it prints (`http://127.0.0.1:8787/__tokenfault/studio/`) and click **Send test request**.
+Open the Studio URL it prints (`http://127.0.0.1:8787/__tokenfault/studio/`), sign in with the **control token** printed
+next to it, and click **Send test request**. The token is new on every start (see [Security model](#security-model)).
 From a second terminal:
 
 ```bash
@@ -179,17 +180,24 @@ TokenFault is a local developer tool. Its defaults assume one developer on one m
 - **Loopback by default.** The proxy and mock bind `127.0.0.1`. Binding any other address requires `--allow-remote`.
 - **Not an open proxy.** The upstream is fixed at startup. Absolute-form and `//host` request targets, dot-segment and
   encoded-slash base-path escapes, and credentials in the target URL are all rejected.
-- **Control plane is loopback-only.** `/__tokenfault/*` (Studio and API) requires a loopback peer **and** a loopback `Host`
+- **Control plane requires a token.** Every run generates a random control token and prints it once. Tools send it as
+  `Authorization: Bearer <token>`; the Studio exchanges it for an `HttpOnly`, `SameSite=Strict` session cookie, so the token
+  is never stored in the browser or put in a URL. Set `TOKENFAULT_CONTROL_TOKEN` to choose your own, or pass
+  `--no-control-auth` to disable it (not recommended on shared machines). `@tokenfault/testing` handles the token for you.
+- **Control plane is loopback-only.** `/__tokenfault/*` (Studio and API) also requires a loopback peer **and** a loopback `Host`
   header (DNS-rebinding protection). Cross-site and cross-origin writes are rejected, JSON is required, and no CORS headers are
   sent. The data path also rejects non-loopback `Host` headers unless `--allow-remote` is set.
 - **Secrets.** `Authorization` and other credentials are forwarded upstream unchanged but never logged, captured, recorded or
   shown. Query-string values are redacted. Error messages are scrubbed of key-shaped strings.
 - **Privacy defaults.** Prompts and request headers are never captured. Response payloads are kept **in memory only**
   (bounded, lost on exit; `--no-capture-payloads` disables this). Recordings exclude payloads unless you pass
-  `--record-payloads`. Recording files are created with mode `0600` and never overwritten.
+  `--record-payloads`. Recording files are created with mode `0600` (POSIX; Windows uses the directory's ACL) and never
+  overwritten.
 - **Bounded resources.** Body sizes, event sizes, sessions, events per session, captured bytes, recording size and live-feed
   buffers all have limits.
 - **TLS** verification is never disabled.
+- **Forwarded content is sandboxed.** Responses on the data path carry `Content-Security-Policy: sandbox` and `nosniff`, so
+  upstream HTML cannot run script in the Studio's origin.
 
 Read the [threat model](docs/engineering/THREAT_MODEL.md) for details and residual risks, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 TokenFault has not had an external security audit.
@@ -203,7 +211,7 @@ TokenFault has not had an external security audit.
                      │  StreamInspector: SSE decoder → chat interpreter → metrics/diagnostics
                      ▼
                SessionStore (bounded) ──► live SSE feed ──► Studio (React)
-                     │                └─► control API (loopback only)
+                     │                └─► control API (loopback + token)
                      └─► recorder (optional, 0600, retention)      replay ◄── .tfrec.json
 ```
 

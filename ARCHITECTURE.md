@@ -105,6 +105,9 @@ disconnected.
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `GET /__tokenfault/api/info`                                   | Server info (target without credentials, privacy settings, limits, active faults) |
 | `GET /__tokenfault/api/health`                                 | Liveness                                                                          |
+| `GET /__tokenfault/api/auth/status`                            | `{required, authenticated}` (no token needed)                                     |
+| `POST /__tokenfault/api/auth/login`                            | `{token}` → session cookie (Studio sign-in); 401 / 429 on failure                 |
+| `POST /__tokenfault/api/auth/logout`                           | Ends the cookie session                                                           |
 | `GET /__tokenfault/api/scenarios`                              | Scenario and fault-type catalogue                                                 |
 | `GET/DELETE /__tokenfault/api/sessions`                        | List / clear sessions                                                             |
 | `GET /__tokenfault/api/sessions/:id[?chunks=false]`            | Session detail                                                                    |
@@ -114,7 +117,10 @@ disconnected.
 | `POST /__tokenfault/api/replays`                               | Replay `{sessionId}` or `{recording}` with `{timing}` into a new session          |
 | `POST /__tokenfault/api/probe`                                 | Send a sample streaming request through this proxy                                |
 
-All control routes sit behind the guard described in the [threat model](docs/engineering/THREAT_MODEL.md).
+All control routes sit behind the guard described in the [threat model](docs/engineering/THREAT_MODEL.md). Except
+`health`, the three `auth` routes and the static Studio assets, they also require the control token, either as
+`Authorization: Bearer <token>` or as the Studio's session cookie (decision D-021). Unauthenticated requests get
+`401` with `WWW-Authenticate: Bearer realm="tokenfault"`.
 
 ## Recording and replay
 

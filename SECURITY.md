@@ -27,6 +27,8 @@ Of particular interest:
 
 - ways to make the proxy contact a host other than the configured target (SSRF / open proxy);
 - access to the control API or Studio from a non-loopback peer, a non-loopback `Host`, or another origin;
+- access to the control API without the control token, or ways to read the token or session cookie (logs, URLs,
+  browser storage, timing);
 - leakage of `Authorization`/API keys or prompts into logs, sessions, recordings or the Studio;
 - path traversal in Studio static serving or recording handling;
 - malicious recording files causing code execution or unbounded resource use;

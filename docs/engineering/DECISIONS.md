@@ -217,3 +217,32 @@ The idle timer is paused while the proxy itself waits: injected stalls, jitter o
 slow client applying backpressure. Otherwise, a fault longer than the idle timeout, or a slow consumer, would be
 misreported as `upstream-timeout` and would kill a healthy upstream. The optional total timeout still bounds
 the whole exchange. _(Found by the internal review.)_
+
+## D-021 — The control plane requires a token by default
+
+The control API exposes captured completions, fault control and replay. Loopback binding, `Host` checks and
+`Origin` checks block remote hosts and web pages, but not other local processes or users (residual risk 1 in
+0.1.0). From 0.2.0 every proxy run requires a control token on all control routes except `GET /api/health`,
+the auth endpoints and the static Studio assets.
+
+- **Token:** 256 random bits (base64url), generated per run and printed once to the terminal. The operator can
+  supply one through `TOKENFAULT_CONTROL_TOKEN` (≥ 32 printable characters). It is never accepted as a
+  command-line value, because process listings are visible to other users.
+- **Tools** (`@tokenfault/testing`, scripts, `curl`) send `Authorization: Bearer <token>`.
+- **Studio:** the user pastes the token once into a sign-in form. `POST /api/auth/login` exchanges it for a
+  random session id in an `HttpOnly; SameSite=Strict; Path=/__tokenfault` cookie (12 h). The token is never
+  put in a URL, in browser storage or in the static bundle, so page scripts cannot read it.
+- **Comparison:** SHA-256 digests compared with `timingSafeEqual`, which hides the length too. After 10 failed
+  logins in 60 s, further logins get 429.
+- **Opt-out:** `--no-control-auth` (or `controlToken: null` in code) restores the 0.1.0 behaviour and prints a
+  warning. `startProxy()` in `@tokenfault/testing` generates a token and passes it to its `ControlClient`
+  automatically, so test code does not change.
+
+Alternatives considered:
+
+| Option                                | For                                      | Against                                                                                    |
+| ------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Token in the Studio URL (`?token=`)   | One click to open                        | Leaks into history, `Referer`, logs and screenshots. Rejected.                             |
+| Unix socket / named pipe for control  | OS permissions instead of a secret       | Browsers cannot use it; the Studio would need a second server. Platform-specific.          |
+| Bearer only, Studio stores it         | Simplest server                          | The token would sit in `localStorage`, readable by any script on the origin. Rejected.     |
+| **Bearer for tools + cookie session** | No client-side secret; works in every OS | Small amount of server state (≤ 64 sessions); one sign-in per browser per run. **Chosen.** |
