@@ -1,0 +1,88 @@
+# Phase 2 Audit: Production Hardening
+
+- **Date:** 2026-10-09
+- **Audited revision:** `6fe5140` (`main`, identical to the remote)
+- **Method:** source review, reproduction scripts and measurements, plus two independent read-only reviews (security/privacy and cross-platform)
+
+## Baseline (re-verified, not carried over)
+
+| Gate                                      | Result at `6fe5140`                |
+| ----------------------------------------- | ---------------------------------- |
+| build, typecheck, lint, format            | pass                               |
+| unit / integration+contract               | 200 / 79 passed                    |
+| CLI smoke / Playwright E2E                | 34/34 / 3 passed                   |
+| GitHub Actions run #1 (`main`, Linux)     | both jobs passed (`verify`, `e2e`) |
+| `pnpm audit` (380 deps, all and `--prod`) | 0 known vulnerabilities            |
+| External install from packed tarballs     | **fails** (see PKG-1)              |
+
+## Findings
+
+Severity: **C**ritical / **H**igh / **M**edium / **L**ow / **I**nfo. Every finding marked _reproduced_ has a script or test that shows the behaviour.
+
+### Security and privacy
+
+| ID    | Sev        | Finding                                                                                                                                                   | Files                                                  | Reproduction                                                                                     | Root cause                                                                        | Correction                                                                                                                                              | Regression test                                            | Break risk                                 |
+| ----- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------ |
+| SEC-1 | M          | An upstream `101 Switching Protocols` reply leaves the exchange hanging forever. No timeout or client disconnect ends it, and sessions leak as `pending`. | `packages/proxy/src/proxy-handler.ts` (`openUpstream`) | Reproduced: upstream returns 101, the client gets no bytes, the session stays pending            | Node emits `upgrade`/`close` but never `response`/`error`, and neither is handled | Handle `upgrade` (destroy the socket, 502) and `close`-before-response (settle once)                                                                    | Integration: 101 upstream → 502 + termination recorded     | Low                                        |
+| SEC-2 | M          | Upstream `text/html` is served same-origin with the control API and Studio, with no CSP. Reflected upstream HTML can script the control plane.            | `headers.ts`, `proxy-handler.ts`, `server.ts`          | Reproduced: a cross-site navigation reflected as HTML, then a same-origin `PUT /faults` gets 200 | Forwarded responses are not isolated from the control origin                      | Add `Content-Security-Policy: sandbox; default-src 'none'` and `nosniff` to every forwarded response. Reject cross-site _navigations_ on the data path. | Integration: headers present; cross-site navigate gets 403 | Low (CSP only affects documents)           |
+| SEC-3 | L          | Fastify's default 404 logs the raw URL (query values unredacted) for methods outside the proxy route                                                      | `server.ts` (no not-found handler)                     | Reproduced: `TRACE /v1/x?key=SECRET` with `--log` puts `SECRET` in stdout                        | Fastify's `basic404` bypasses the request serializer                              | Custom not-found handler with no URL echo                                                                                                               | Integration: log capture contains no secret                | Low                                        |
+| SEC-4 | L          | Bare query parameters (no `=`) are not redacted                                                                                                           | `packages/shared/src/redact.ts`                        | Reproduced: `?a=1&SECRET` reaches logs, sessions and recordings                                  | Only `name=value` parts were redacted                                             | Redact bare parts entirely                                                                                                                              | Unit                                                       | Low                                        |
+| SEC-5 | L          | Mock server memory amplification: a 19 MB `enum` value is echoed into tool arguments and every frame is materialised up front (~1 GB RSS per request)     | `packages/mock-llm/src/generate.ts`, `completion.ts`   | Reproduced (RSS measured)                                                                        | Unbounded example values                                                          | Clip generated example values; bound total arguments size                                                                                               | Unit                                                       | Low                                        |
+| SEC-6 | I          | Studio paths are percent-decoded twice (the router decodes, then `lookup` decodes again). Containment still holds.                                        | `static-files.ts`                                      | Reproduced: `%25ZZ` gets 400                                                                     | Redundant decode                                                                  | Single decode                                                                                                                                           | Integration: `%2541` is looked up literally                | Low                                        |
+| SEC-7 | I          | Malformed percent-encoding (`/%ZZ`) produces Fastify's own error, which echoes the path, before the guard runs                                            | `server.ts`                                            | Reproduced                                                                                       | Default `frameworkErrors`                                                         | `frameworkErrors` handler returning `errorBody` without the path                                                                                        | Integration                                                | Low                                        |
+| SEC-8 | L (design) | The control API has no authentication, so any local process or user can read in-memory completions (residual risk 1)                                      | `server.ts`, `control-api.ts`                          | By design in 0.1                                                                                 | No auth layer                                                                     | Control token on by default: Bearer header for tools, login, then an HttpOnly SameSite=Strict cookie for the Studio                                     | Integration + E2E                                          | Medium (touches Studio, CLI, testing, E2E) |
+
+Areas that held up under attack are listed in the security reviewer's notes and summarised in `THREAT_MODEL.md`:
+
+- request smuggling (TE/CL combinations)
+- redirects (not followed)
+- oversized or obsolete headers
+- HEAD, 204 and 304 responses
+- `x-tokenfault-*` spoofing
+- control-plane bypass variants (case, `%255F`, fullwidth characters, `;`, HEAD/OPTIONS/TRACE)
+- `Origin: null`
+- credential and prompt redaction on every surface
+
+### Performance
+
+| ID      | Sev | Finding                                                                                                                                                    | Evidence                                                                                                             | Correction                                                                                                  |
+| ------- | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| PERF-1  | M   | The SSE decoder is quadratic in chunk size. `findTerminator` rescans the whole buffered remainder for CR on every line (LF-only streams never contain CR). | CPU profile: 1.6 s of 1.9 s in `findTerminator`. 50k events took 1477 ms in 64 KiB chunks vs 111 ms in 1 KiB chunks. | Single linear scan that remembers how far it has scanned                                                    |
+| PERF-2  | L   | The inspector spends 43% of its time in the portable base64 encoder                                                                                        | CPU profile: 231 of 531 ms in `bytesToBase64`                                                                        | Feature-detected native encoder (`Uint8Array.toBase64` or `Buffer`) with the portable fallback              |
+| BENCH-1 | I   | Proxy first byte looked like 974 ms in the benchmark                                                                                                       | Same-process client/server measurement artifact: with the server in a separate process, first byte is 10–18 ms       | Benchmark runs the server in a child process. A fairness regression test was added. No proxy change needed. |
+
+### Packaging
+
+| ID    | Sev | Finding                                                                                                                                   | Evidence                                                                  | Correction                                                                                                                      |
+| ----- | --- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| PKG-1 | H   | Packages cannot be installed outside the monorepo: all are `private`, and the CLI depends on `@tokenfault/studio`, which is not a library | `scripts/pack-test.mjs`: `npm install` gets E404 for `@tokenfault/studio` | Bundle the Studio assets into the `tokenfault` package. Publish shared, core, mock-llm, proxy, testing and the CLI in lockstep. |
+| PKG-2 | M   | Shipped source maps reference `../src`, which is not packed                                                                               | `dist/*.js.map` `sources`                                                 | Ship `src` in libraries                                                                                                         |
+| PKG-3 | M   | No LICENSE, README, repository or engines metadata per package                                                                            | tarball listing                                                           | Add per-package metadata and files                                                                                              |
+| PKG-4 | M   | `@tokenfault/testing` needs `mock-llm` and `proxy` at runtime, so they must be publishable too                                            | dependency graph                                                          | Publish all six; document the graph                                                                                             |
+
+### Cross-platform (from code review; to be confirmed by CI)
+
+| ID   | Sev                  | Finding                                                                                                                                        | Files                                        | Correction                                                           |
+| ---- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| XP-1 | blocks CI            | The smoke test stops children with POSIX signals. On Windows `kill()` terminates unconditionally, so the graceful-exit assertions cannot hold. | `scripts/cli-smoke.mjs`                      | Assert graceful exit on POSIX; on Windows assert termination only    |
+| XP-2 | blocks CI            | No `.gitattributes`. CRLF checkouts on Windows fail `prettier --check`.                                                                        | repo root                                    | `* text=auto eol=lf`                                                 |
+| XP-3 | blocks CI / real bug | `process.exit()` right after large `--json` output can truncate it on POSIX pipes (macOS)                                                      | `packages/cli/src/bin.ts`                    | Flush stdout/stderr before exit                                      |
+| XP-4 | flaky                | An RST right after the last write may discard unsent bytes (Windows)                                                                           | `packages/core/src/node/response.ts`         | Flush pending writes before the reset; short grace period on Windows |
+| XP-5 | flaky                | The symlink test needs special privileges on Windows                                                                                           | `tests/integration/recording-static.test.ts` | Probe once and skip only that case when it is unavailable            |
+| XP-6 | cosmetic             | Graceful shutdown on Windows only handles Ctrl+C                                                                                               | `packages/cli/src/lifecycle.ts`              | Also handle `SIGHUP`/`SIGBREAK` on win32                             |
+| XP-7 | cosmetic             | `clean` script uses `rm -rf`                                                                                                                   | `package.json`                               | Portable `scripts/clean.mjs`                                         |
+| XP-8 | info                 | File modes (`0600`/`0700`) are not enforced on Windows                                                                                         | recorder, inspect                            | Document in SECURITY/THREAT_MODEL                                    |
+
+### Documentation
+
+| ID    | Finding                                                                         | Correction                       |
+| ----- | ------------------------------------------------------------------------------- | -------------------------------- |
+| DOC-1 | `IMPLEMENTATION_STATUS.md` says GitHub Actions "not run yet", but run #1 passed | Update with the real run         |
+| DOC-2 | THREAT_MODEL T10 claims a single percent-decode (see SEC-6)                     | Correct after the fix            |
+| DOC-3 | Benchmarks and packaging status are not documented                              | `BENCHMARKS.md`; release section |
+
+### Repository hygiene
+
+| ID    | Finding                                                                                                                                                      | Correction                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| GIT-1 | The obsolete branch `ccr-c63d96e2-537cz5` still exists on the remote (same commit as `main`). Deleting it from this environment is refused by the git proxy. | Delete it manually in the GitHub UI |

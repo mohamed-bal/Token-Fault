@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
-import type { FastifyError, FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { findScenario, parseFaultProfile } from '@tokenfault/core';
 import type { FaultProfileInput, FaultSelection } from '@tokenfault/core';
@@ -51,6 +51,8 @@ export interface TokenFaultServerOptions {
   readonly studioDir?: string | null;
   readonly limits?: Partial<Limits>;
   readonly logger?: boolean;
+  /** Where log lines go when `logger` is enabled (default: stdout). Useful for embedding and tests. */
+  readonly logDestination?: { write(line: string): unknown };
   readonly version?: string;
 }
 
@@ -120,6 +122,11 @@ const OptionsSchema = z.strictObject({
     })
     .optional(),
   logger: z.boolean().optional(),
+  logDestination: z
+    .custom<{ write(line: string): unknown }>(
+      (v) => typeof (v as { write?: unknown } | null)?.write === 'function',
+    )
+    .optional(),
   version: z.string().max(64).optional(),
 });
 
@@ -244,6 +251,7 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
     logger: options.logger
       ? {
           level: 'info',
+          ...(options.logDestination ? { stream: options.logDestination } : {}),
           serializers: {
             req: (req: FastifyRequest) => ({
               id: req.id,
@@ -258,6 +266,18 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
     forceCloseConnections: true,
     // Headers timeout and keep-alive are handled per exchange; long streams must not be cut by Node defaults.
     requestTimeout: 0,
+    // Router-level errors (e.g. malformed percent-encoding) never echo the request path.
+    frameworkErrors: (_error, _request, reply) => {
+      // Raw response: the reply generic here is too narrow for a typed send().
+      reply.hijack();
+      reply.raw.writeHead(400, {
+        'content-type': 'application/json',
+        'x-content-type-options': 'nosniff',
+      });
+      reply.raw.end(
+        JSON.stringify(errorBody('tokenfault_invalid_request', 'Malformed request URL.')),
+      );
+    },
   });
 
   const store = new SessionStore({
@@ -309,6 +329,21 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
     if (!isControlRequest(url, request.routeOptions.url)) {
       // Data path: while bound to loopback, only loopback Host names are accepted, so a web
       // page using DNS rebinding cannot drive requests through the proxy.
+      // The data path serves API traffic, never pages: a cross-site top-level navigation into it
+      // is refused so attacker-chosen URLs cannot be rendered on this origin.
+      if (
+        request.headers['sec-fetch-mode'] === 'navigate' &&
+        request.headers['sec-fetch-site'] === 'cross-site'
+      ) {
+        return reply
+          .code(403)
+          .send(
+            errorBody(
+              'tokenfault_forbidden',
+              'Cross-site navigations to the proxy are not allowed.',
+            ),
+          );
+      }
       if (options.allowRemote !== true && !isLoopbackHostHeader(request.headers.host)) {
         return reply
           .code(403)
@@ -370,6 +405,12 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
     }
     return undefined;
   });
+
+  // Fastify's default 404 logs and echoes the raw URL (query values included); this handler
+  // does neither. It only runs for methods the proxy route does not accept.
+  app.setNotFoundHandler((_request: FastifyRequest, reply: FastifyReply) =>
+    reply.code(405).send(errorBody('tokenfault_method_not_allowed', 'Method not allowed.')),
+  );
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     const status = error.statusCode ?? 500;

@@ -76,6 +76,18 @@ export function forwardRequestHeaders(
  * body is streamed with chunked encoding (faults may change its length);
  * HSTS and Alt-Svc are dropped because they are meaningless for a local proxy.
  */
+/**
+ * Added to every forwarded response. The proxy shares its origin with the Studio and the
+ * control API, so upstream content must never be able to run as a same-origin document:
+ * `sandbox` gives any HTML an opaque origin (its requests then fail the control-plane Origin
+ * check), and `nosniff` stops content-type sniffing. These headers only affect documents
+ * rendered by a browser, not API clients.
+ */
+export const RESPONSE_ISOLATION_HEADERS: Readonly<Record<string, string>> = Object.freeze({
+  'content-security-policy': "sandbox; default-src 'none'",
+  'x-content-type-options': 'nosniff',
+});
+
 export function forwardResponseHeaders(incoming: IncomingHttpHeaders): OutgoingHttpHeaders {
   const listed = connectionListed(incoming);
   const out: OutgoingHttpHeaders = {};
@@ -91,5 +103,12 @@ export function forwardResponseHeaders(incoming: IncomingHttpHeaders): OutgoingH
       continue;
     out[lower] = value;
   }
+  // An upstream CSP is kept: comma-separated policies are all enforced (they intersect), so
+  // appending ours only restricts further.
+  const isolation =
+    RESPONSE_ISOLATION_HEADERS['content-security-policy'] ?? "sandbox; default-src 'none'";
+  const upstreamCsp = out['content-security-policy'];
+  out['content-security-policy'] = upstreamCsp ? `${String(upstreamCsp)}, ${isolation}` : isolation;
+  out['x-content-type-options'] = 'nosniff';
   return out;
 }

@@ -53,8 +53,11 @@ describe('captureResponseHeaders', () => {
 describe('redactPathQuery', () => {
   it('redacts every query value but keeps names', () => {
     expect(redactPathQuery('/v1/chat/completions?key=abc&debug&x=1')).toBe(
-      `/v1/chat/completions?key=${REDACTED}&debug&x=${REDACTED}`,
+      `/v1/chat/completions?key=${REDACTED}&${REDACTED}&x=${REDACTED}`,
     );
+  });
+  it('redacts bare parameters entirely, including encoded separators', () => {
+    expect(redactPathQuery('/v1?sk-SECRET&key%3Dsecret')).toBe(`/v1?${REDACTED}&${REDACTED}`);
   });
   it('leaves paths without a query untouched', () => {
     expect(redactPathQuery('/v1/models')).toBe('/v1/models');

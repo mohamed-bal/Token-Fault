@@ -181,3 +181,15 @@ describe('gap stats and base64', () => {
     expect(() => base64ToBytes('ab!d')).toThrow(TypeError);
   });
 });
+
+describe('base64 fast path', () => {
+  it('matches the portable encoder for arbitrary bytes and offsets', async () => {
+    const { bytesToBase64, bytesToBase64Portable, base64ToBytes } =
+      await import('../src/util/base64.js');
+    const big = new Uint8Array(100_003).map((_, i) => (i * 7919) % 256);
+    for (const view of [big, big.subarray(1), big.subarray(5, 9), big.subarray(0, 0)]) {
+      expect(bytesToBase64(view)).toBe(bytesToBase64Portable(view));
+      expect(base64ToBytes(bytesToBase64(view))).toEqual(view);
+    }
+  });
+});

@@ -2,7 +2,7 @@
  * Minimal static file serving for the Studio bundle (DECISIONS.md D-007).
  *
  * Path safety:
- * - The URL path is percent-decoded once. NUL bytes and backslashes are rejected.
+ * - The URL path is percent-decoded exactly once (by the router). NUL bytes and backslashes are rejected.
  * - The resolved path must stay inside the root directory, compared after
  *   `realpath`, so symlinks cannot escape it either.
  * - Only regular files are served. Unknown paths without an extension fall
@@ -47,14 +47,12 @@ export class StaticRoot {
     return this.realRoot;
   }
 
-  /** Resolves a URL path (relative to the mount point) to a file inside the root. */
-  async lookup(urlPath: string): Promise<StaticLookup> {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(urlPath);
-    } catch {
-      return { ok: false, status: 400 };
-    }
+  /**
+   * Resolves a URL path (relative to the mount point) to a file inside the root. The path
+   * must already be percent-decoded exactly once (the router does this); it is not decoded
+   * again, so `%2541` names the file `%41`.
+   */
+  async lookup(decoded: string): Promise<StaticLookup> {
     if (decoded.includes('\0') || decoded.includes('\\')) return { ok: false, status: 400 };
     const root = await this.root();
     const relative = decoded.replace(/^\/+/, '');

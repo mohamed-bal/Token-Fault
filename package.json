@@ -22,7 +22,7 @@
     "test:e2e": "playwright test",
     "smoke": "node scripts/cli-smoke.mjs",
     "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm smoke && pnpm test:e2e",
-    "clean": "pnpm -r exec rm -rf dist tsconfig.build.tsbuildinfo tsconfig.tsbuildinfo"
+    "clean": "pnpm -r exec node ../../scripts/clean.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

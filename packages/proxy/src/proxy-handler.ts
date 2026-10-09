@@ -37,7 +37,11 @@ import {
   redactPathQuery,
 } from '@tokenfault/shared';
 import type { Limits, RequestMeta, TerminationKind, TokenFaultErrorCode } from '@tokenfault/shared';
-import { forwardRequestHeaders, forwardResponseHeaders } from './headers.js';
+import {
+  RESPONSE_ISOLATION_HEADERS,
+  forwardRequestHeaders,
+  forwardResponseHeaders,
+} from './headers.js';
 import type { Session, SessionStore } from './session-store.js';
 import { buildUpstreamUrl } from './target.js';
 import type { UpstreamTarget } from './target.js';
@@ -287,6 +291,7 @@ class ProxyExchange {
       },
     });
     const headers: OutgoingHttpHeaders = {
+      ...RESPONSE_ISOLATION_HEADERS,
       'content-type': 'application/json',
       [SESSION_HEADER]: this.session.id,
     };
@@ -317,20 +322,11 @@ class ProxyExchange {
     this.headersTimer = setTimeout(() => this.timeout('headers'), this.ctx.headersTimeoutMs);
 
     return new Promise((resolve) => {
-      let responded = false;
-      const upstreamReq = requestFn(this.upstreamUrl, {
-        method: this.request.method,
-        headers,
-        signal: this.upstreamController.signal,
-      });
-      upstreamReq.on('response', (upstreamRes) => {
-        responded = true;
-        if (this.headersTimer) clearTimeout(this.headersTimer);
-        this.headersTimer = null;
-        resolve(upstreamRes);
-      });
-      upstreamReq.on('error', (error) => {
-        if (responded) return; // Body-phase errors surface on the response stream.
+      // Exactly one of: response, error, upgrade, or close-without-response settles the exchange.
+      let settled = false;
+      const failBeforeHeaders = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
         if (this.headersTimer) clearTimeout(this.headersTimer);
         this.headersTimer = null;
         if (this.clientController.signal.aborted) {
@@ -353,7 +349,36 @@ class ProxyExchange {
           this.finish('upstream-unreachable', describeError(error));
         }
         resolve(null);
+      };
+      const upstreamReq = requestFn(this.upstreamUrl, {
+        method: this.request.method,
+        headers,
+        signal: this.upstreamController.signal,
       });
+      upstreamReq.on('response', (upstreamRes) => {
+        if (settled) {
+          upstreamRes.destroy();
+          return;
+        }
+        settled = true;
+        if (this.headersTimer) clearTimeout(this.headersTimer);
+        this.headersTimer = null;
+        resolve(upstreamRes);
+      });
+      // Body-phase errors surface on the response stream; only pre-response errors land here.
+      upstreamReq.on('error', (error) => failBeforeHeaders(error));
+      // Protocol switches are never proxied (the proxy only forwards HTTP request/response
+      // exchanges). Without this handler Node emits neither 'response' nor 'error' and the
+      // exchange would hang forever.
+      upstreamReq.on('upgrade', (_res, socket) => {
+        socket.destroy();
+        failBeforeHeaders(
+          new Error('upstream attempted a protocol upgrade (101), which TokenFault does not proxy'),
+        );
+      });
+      upstreamReq.on('close', () =>
+        failBeforeHeaders(new Error('upstream closed the connection before sending a response')),
+      );
       upstreamReq.end(this.body.length > 0 ? this.body : undefined);
     });
   }
@@ -458,7 +483,11 @@ class ProxyExchange {
   private writeJsonError(status: number, code: TokenFaultErrorCode, message: string): void {
     if (this.res.headersSent || this.res.destroyed) return;
     const payload = Buffer.from(JSON.stringify(errorBody(code, message)));
-    const headers = { 'content-type': 'application/json', [SESSION_HEADER]: this.session.id };
+    const headers = {
+      ...RESPONSE_ISOLATION_HEADERS,
+      'content-type': 'application/json',
+      [SESSION_HEADER]: this.session.id,
+    };
     this.ctx.store.onHeaders(this.session, status, headers, this.now());
     this.res.writeHead(status, headers);
     this.res.end(payload);

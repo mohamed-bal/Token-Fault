@@ -58,11 +58,29 @@ export function terminateResponse(res: ServerResponse, mode: DisconnectMode): vo
       return;
     case 'reset': {
       const socket = res.socket;
-      // resetAndDestroy() (Node >= 16.17) sends a TCP RST instead of a FIN.
-      if (socket && typeof socket.resetAndDestroy === 'function' && !socket.destroyed) {
-        socket.resetAndDestroy();
-      } else {
+      if (!socket || typeof socket.resetAndDestroy !== 'function' || socket.destroyed) {
         res.destroy();
+        return;
+      }
+      // An RST discards data still queued in the socket. The fault contract is "reset AFTER the
+      // bytes written so far", so pending user-space writes are flushed first. On Windows the
+      // kernel also drops unsent/unread data on RST, so a short grace period follows there.
+      const reset = (): void => {
+        if (!socket.destroyed) socket.resetAndDestroy();
+      };
+      const afterFlush = (): void => {
+        if (process.platform === 'win32') setTimeout(reset, 15).unref();
+        else reset();
+      };
+      if (socket.writableLength === 0) {
+        afterFlush();
+      } else {
+        const fallback = setTimeout(reset, 1_000);
+        fallback.unref();
+        socket.once('drain', () => {
+          clearTimeout(fallback);
+          afterFlush();
+        });
       }
       return;
     }

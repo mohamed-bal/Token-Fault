@@ -105,6 +105,8 @@ export class SseDecoder {
   // Oversize recovery.
   private discarding = false;
   private discardLineHasBytes = false;
+  /** Bytes after `head` already known not to contain CR or LF. Reset whenever `head` moves. */
+  private scanned = 0;
 
   constructor(options: SseDecoderOptions = {}) {
     const max = options.maxEventBytes ?? DEFAULT_LIMITS.maxEventBytes;
@@ -159,6 +161,7 @@ export class SseDecoder {
     }
     this.offset += pendingLineBytes;
     this.head = this.tail = 0;
+    this.scanned = 0;
     this.resetBlock();
     return out;
   }
@@ -203,6 +206,7 @@ export class SseDecoder {
           // The LF of a CRLF is not counted towards the block size: whether it is consumed here
           // or later depends on chunk boundaries, and the size limit must not.
           this.head += 1;
+          this.scanned = 0;
           this.offset += 1;
         }
       }
@@ -221,20 +225,29 @@ export class SseDecoder {
       // Copy the line out before advancing, since processLine may trigger compaction later.
       const lineCopy = line.slice();
       this.head += consumed;
+      this.scanned = 0;
       this.offset += consumed;
       this.processLine(lineCopy, lineStartOffset, consumed, out);
     }
   }
 
+  /**
+   * Finds the next CR or LF in buf[head, tail) with a single linear scan.
+   * Bytes already scanned for the current pending line are not scanned again
+   * (`scanned` is relative to `head`, so it survives buffer compaction). This
+   * keeps decoding linear in the input size for any chunk size.
+   */
   private findTerminator(): number {
-    const view = this.buf.subarray(this.head, this.tail);
-    const lf = view.indexOf(LF);
-    const cr = view.indexOf(CR);
-    let idx: number;
-    if (lf === -1) idx = cr;
-    else if (cr === -1) idx = lf;
-    else idx = Math.min(lf, cr);
-    return idx === -1 ? -1 : this.head + idx;
+    const buf = this.buf;
+    for (let i = this.head + this.scanned; i < this.tail; i++) {
+      const b = buf[i];
+      if (b === LF || b === CR) {
+        this.scanned = 0;
+        return i;
+      }
+    }
+    this.scanned = this.tail - this.head;
+    return -1;
   }
 
   private checkPendingSize(out: SseItem[]): void {
@@ -243,6 +256,8 @@ export class SseDecoder {
       if (pending > 0) this.discardLineHasBytes = true;
       this.offset += pending;
       this.head = this.tail = 0;
+      this.scanned = 0;
+      this.scanned = 0;
       return;
     }
     if (this.blockBytes + pending > this.maxEventBytes) {
@@ -250,6 +265,8 @@ export class SseDecoder {
       this.discardLineHasBytes = pending > 0;
       this.offset += pending;
       this.head = this.tail = 0;
+      this.scanned = 0;
+      this.scanned = 0;
     }
   }
 

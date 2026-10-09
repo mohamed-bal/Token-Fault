@@ -92,7 +92,8 @@ export function redactPathQuery(pathWithQuery: string): string {
     .map((part) => {
       const eq = part.indexOf('=');
       const name = eq === -1 ? part : part.slice(0, eq);
-      return eq === -1 ? name : `${name}=${REDACTED}`;
+      // A bare part (no '=') may itself be a secret (`?sk-...`), so it is redacted entirely.
+      return eq === -1 ? REDACTED : `${name}=${REDACTED}`;
     })
     .join('&');
   return `${path}?${redacted}`;

@@ -30,5 +30,11 @@ export function waitForShutdown(shutdown: () => Promise<void>, graceMs = 5_000):
     };
     process.once('SIGINT', onSignal);
     process.once('SIGTERM', onSignal);
+    // Windows: closing the console window emits SIGHUP and Ctrl+Break emits SIGBREAK;
+    // SIGTERM is never delivered there.
+    if (process.platform === 'win32') {
+      process.once('SIGHUP', onSignal);
+      process.once('SIGBREAK', onSignal);
+    }
   });
 }

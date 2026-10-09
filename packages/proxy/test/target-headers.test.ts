@@ -108,7 +108,12 @@ describe('header forwarding', () => {
       'set-cookie': ['a=1', 'b=2'],
       'x-tokenfault-session': 'spoofed',
     });
-    expect(out).toEqual({ 'content-type': 'text/event-stream', 'set-cookie': ['a=1', 'b=2'] });
+    expect(out).toEqual({
+      'content-type': 'text/event-stream',
+      'set-cookie': ['a=1', 'b=2'],
+      'content-security-policy': "sandbox; default-src 'none'",
+      'x-content-type-options': 'nosniff',
+    });
   });
 });
 

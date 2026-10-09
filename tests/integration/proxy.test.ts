@@ -706,3 +706,30 @@ describe('review regressions', () => {
     expect(result.snapshot.metrics.eventCount).toBe(10);
   });
 });
+
+describe('event-loop fairness', () => {
+  it('a fast, large upstream does not starve other connections handled by the same proxy', async () => {
+    const block = Buffer.from(sseChunk('x'.repeat(200)).repeat(200));
+    const up = await upstream(async (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      for (let i = 0; i < 700 && !res.destroyed; i++) {
+        if (!res.write(block)) await new Promise((r) => res.once('drain', r));
+      }
+      res.end('data: [DONE]\n\n');
+    });
+    const proxy = await proxyTo(up);
+    const big = streamRequest(`${proxy.url}/v1/chat/completions`, {
+      body: {},
+      capturePayloads: false,
+    });
+    await sleep(20);
+    const started = performance.now();
+    const health = await fetch(`${proxy.url}/__tokenfault/api/health`);
+    const healthMs = performance.now() - started;
+    const result = await big;
+    expect(health.status).toBe(200);
+    expect(result.snapshot.outcome).toBe('completed');
+    // The health check must be served while the big stream is still in flight.
+    expect(healthMs).toBeLessThan(result.termination.atMs * 0.5);
+  });
+});

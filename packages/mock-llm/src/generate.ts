@@ -88,19 +88,34 @@ export function selectTool(request: ChatRequest, forceTool: boolean): ChatTool |
   return forceTool ? DEFAULT_TOOL : null;
 }
 
+/** Upper bounds that keep generated output small whatever the request contains (DoS hardening). */
+const MAX_EXAMPLE_STRING = 256;
+const MAX_ARGUMENTS_CHARS = 4_096;
+
 /** Builds deterministic example arguments from a (subset of) JSON Schema. */
 export function exampleArguments(tool: ChatTool): string {
   const props = tool.function.parameters?.properties ?? {};
   const args: Record<string, unknown> = {};
-  for (const [name, raw] of Object.entries(props).slice(0, 16))
-    args[name] = exampleValue(raw, name);
-  return JSON.stringify(args);
+  for (const [rawName, raw] of Object.entries(props).slice(0, 16)) {
+    const name = rawName.slice(0, 64);
+    const value = exampleValue(raw, name);
+    args[name] = typeof value === 'string' ? value.slice(0, MAX_EXAMPLE_STRING) : value;
+  }
+  const json = JSON.stringify(args);
+  // Arguments must stay valid JSON; if the schema still yields something large, fall back to `{}`.
+  return json.length <= MAX_ARGUMENTS_CHARS ? json : '{}';
 }
 
 function exampleValue(schema: unknown, name: string): unknown {
   if (typeof schema !== 'object' || schema === null) return null;
   const s = schema as { type?: unknown; enum?: unknown };
-  if (Array.isArray(s.enum) && s.enum.length > 0) return s.enum[0] as unknown;
+  if (Array.isArray(s.enum) && s.enum.length > 0) {
+    const first: unknown = s.enum[0];
+    // Only scalar enum values are echoed; objects/arrays could be arbitrarily large.
+    return typeof first === 'string' || typeof first === 'number' || typeof first === 'boolean'
+      ? first
+      : null;
+  }
   switch (s.type) {
     case 'string':
       return name === 'location' ? 'Paris, France' : `example ${name}`;

@@ -1,0 +1,7 @@
+# Normalise line endings so checkouts on every OS match the repository byte for byte
+# (Prettier and the SSE fixtures depend on LF).
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.woff2 binary
+*.tgz binary
