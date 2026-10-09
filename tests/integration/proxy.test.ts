@@ -490,6 +490,25 @@ describe('proxy security boundaries', () => {
     expect(up.requests.map((r) => r.url).every((u) => u.startsWith('/openai/v1/'))).toBe(true);
   });
 
+  it('rejects non-loopback Host headers on the data path unless allowRemote is set', async () => {
+    const up = await upstream((_req, res) => void res.end('ok'));
+    const proxy = await proxyTo(up);
+    const { port } = new URL(proxy.url);
+    const status = await new Promise<string>((resolve) => {
+      const socket = connect(Number(port), '127.0.0.1', () => {
+        socket.write(
+          'GET /v1/models HTTP/1.1\r\nHost: rebind.attacker.example\r\nConnection: close\r\n\r\n',
+        );
+      });
+      let data = '';
+      socket.on('data', (d) => (data += d.toString()));
+      socket.on('end', () => resolve(data.slice(9, 12)));
+    });
+    expect(status).toBe('403');
+    expect(up.requests).toHaveLength(0);
+    expect((await streamRequest(`${proxy.url}/v1/models`)).status).toBe(200);
+  });
+
   it('AC-2.8: refuses to bind a non-loopback address without allowRemote', () => {
     expect(() => createTokenFaultServer({ target: 'http://127.0.0.1:1', host: '0.0.0.0' })).toThrow(
       ConfigError,

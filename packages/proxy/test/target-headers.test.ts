@@ -93,6 +93,11 @@ describe('header forwarding', () => {
     });
   });
 
+  it('sends an explicit zero length for empty bodies of body-carrying methods only', () => {
+    expect(forwardRequestHeaders({}, 0, 'POST')['content-length']).toBe(0);
+    expect(forwardRequestHeaders({}, 0, 'GET')['content-length']).toBeUndefined();
+  });
+
   it('strips hop-by-hop, HSTS, Alt-Svc and content-length from responses', () => {
     const out = forwardResponseHeaders({
       'content-type': 'text/event-stream',

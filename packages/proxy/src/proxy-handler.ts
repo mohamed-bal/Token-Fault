@@ -286,7 +286,11 @@ class ProxyExchange {
   }
 
   private openUpstream(): Promise<IncomingMessage | null> {
-    const headers = forwardRequestHeaders(this.request.headers, this.body.length);
+    const headers = forwardRequestHeaders(
+      this.request.headers,
+      this.body.length,
+      this.request.method,
+    );
     if (this.delegatedScenario !== null) {
       headers[SCENARIO_HEADER] = this.delegatedScenario;
       this.annotate(

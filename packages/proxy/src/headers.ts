@@ -48,6 +48,7 @@ function connectionListed(headers: IncomingHttpHeaders): Set<string> {
 export function forwardRequestHeaders(
   incoming: IncomingHttpHeaders,
   bodyLength: number,
+  method = 'POST',
 ): OutgoingHttpHeaders {
   const listed = connectionListed(incoming);
   const out: OutgoingHttpHeaders = {};
@@ -64,7 +65,9 @@ export function forwardRequestHeaders(
     out[lower] = value;
   }
   out['accept-encoding'] = 'identity';
-  if (bodyLength > 0) out['content-length'] = bodyLength;
+  // Explicit length for every body-carrying method, so an empty body is not sent chunked.
+  if (bodyLength > 0 || method === 'POST' || method === 'PUT' || method === 'PATCH')
+    out['content-length'] = bodyLength;
   return out;
 }
 

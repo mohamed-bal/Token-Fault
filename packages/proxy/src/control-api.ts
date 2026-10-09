@@ -230,58 +230,62 @@ export function registerControlApi(app: FastifyInstance, ctx: ControlContext): v
     return reply.code(204).send();
   });
 
-  app.post(`${API_PREFIX}/replays`, (request, reply) => {
-    const json = parseJson(request.body);
-    if (!json.ok) return fail(reply, 400, 'tokenfault_invalid_request', json.error);
-    const body = ReplayBodySchema.safeParse(json.value);
-    if (!body.success)
-      return fail(reply, 400, 'tokenfault_invalid_request', z.prettifyError(body.error));
-    const timing: ReplayTiming = body.data.timing ?? { kind: 'original' };
-    const timingError = validateTiming(timing);
-    if (timingError) return fail(reply, 400, 'tokenfault_invalid_request', timingError);
+  app.post(
+    `${API_PREFIX}/replays`,
+    { bodyLimit: ctx.limits.maxRecordingBytes },
+    (request, reply) => {
+      const json = parseJson(request.body);
+      if (!json.ok) return fail(reply, 400, 'tokenfault_invalid_request', json.error);
+      const body = ReplayBodySchema.safeParse(json.value);
+      if (!body.success)
+        return fail(reply, 400, 'tokenfault_invalid_request', z.prettifyError(body.error));
+      const timing: ReplayTiming = body.data.timing ?? { kind: 'original' };
+      const timingError = validateTiming(timing);
+      if (timingError) return fail(reply, 400, 'tokenfault_invalid_request', timingError);
 
-    let recording: Recording;
-    let replayOf: string | null = null;
-    if (body.data.sessionId !== undefined) {
-      const session = ctx.store.get(body.data.sessionId);
-      if (!session)
+      let recording: Recording;
+      let replayOf: string | null = null;
+      if (body.data.sessionId !== undefined) {
+        const session = ctx.store.get(body.data.sessionId);
+        if (!session)
+          return fail(
+            reply,
+            404,
+            'tokenfault_not_found',
+            'Session not found (it may have been evicted).',
+          );
+        if (!session.ended)
+          return fail(reply, 409, 'tokenfault_invalid_request', 'Session is still streaming.');
+        // In-memory replay may use captured payloads: they never leave this process.
+        recording = createRecording(session.detail(), {
+          includePayloads: true,
+          toolVersion: ctx.version,
+          seed: session.seed,
+        });
+        replayOf = session.id;
+      } else if (body.data.recording !== undefined) {
+        const validated = validateRecording(body.data.recording);
+        if (!validated.ok) return fail(reply, 400, 'tokenfault_invalid_request', validated.error);
+        recording = validated.recording;
+      } else {
         return fail(
           reply,
-          404,
-          'tokenfault_not_found',
-          'Session not found (it may have been evicted).',
+          400,
+          'tokenfault_invalid_request',
+          'Provide either sessionId or recording.',
         );
-      if (!session.ended)
-        return fail(reply, 409, 'tokenfault_invalid_request', 'Session is still streaming.');
-      // In-memory replay may use captured payloads: they never leave this process.
-      recording = createRecording(session.detail(), {
-        includePayloads: true,
-        toolVersion: ctx.version,
-        seed: session.seed,
-      });
-      replayOf = session.id;
-    } else if (body.data.recording !== undefined) {
-      const validated = validateRecording(body.data.recording);
-      if (!validated.ok) return fail(reply, 400, 'tokenfault_invalid_request', validated.error);
-      recording = validated.recording;
-    } else {
-      return fail(
-        reply,
-        400,
-        'tokenfault_invalid_request',
-        'Provide either sessionId or recording.',
-      );
-    }
-    try {
-      const started = ctx.replays.start(recording, timing, replayOf);
-      const response: ReplayResponse = { sessionId: started.sessionId, mode: started.mode };
-      return reply.code(202).send(response);
-    } catch (error) {
-      if (error instanceof ReplayLimitError)
-        return fail(reply, 429, 'tokenfault_invalid_request', error.message);
-      throw error;
-    }
-  });
+      }
+      try {
+        const started = ctx.replays.start(recording, timing, replayOf);
+        const response: ReplayResponse = { sessionId: started.sessionId, mode: started.mode };
+        return reply.code(202).send(response);
+      } catch (error) {
+        if (error instanceof ReplayLimitError)
+          return fail(reply, 429, 'tokenfault_invalid_request', error.message);
+        throw error;
+      }
+    },
+  );
 
   app.post(`${API_PREFIX}/probe`, async (request, reply) => {
     const json = parseJson(request.body);

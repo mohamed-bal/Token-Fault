@@ -280,7 +280,21 @@ export function createTokenFaultServer(options: TokenFaultServerOptions): TokenF
 
   app.addHook('onRequest', async (request, reply) => {
     const url = request.raw.url ?? '';
-    if (!isControlPath(url)) return;
+    if (!isControlPath(url)) {
+      // Data path: while bound to loopback, only loopback Host names are accepted, so a web
+      // page using DNS rebinding cannot drive requests through the proxy.
+      if (options.allowRemote !== true && !isLoopbackHostHeader(request.headers.host)) {
+        return reply
+          .code(403)
+          .send(
+            errorBody(
+              'tokenfault_forbidden',
+              'Host header must name a loopback host (DNS-rebinding protection). Use --allow-remote to accept other hosts.',
+            ),
+          );
+      }
+      return undefined;
+    }
     void reply.headers(SECURITY_HEADERS);
     if (!isLoopbackAddress(request.socket.remoteAddress)) {
       return reply
