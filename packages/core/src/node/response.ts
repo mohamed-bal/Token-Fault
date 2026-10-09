@@ -40,6 +40,8 @@ export function writeWithBackpressure(res: ServerResponse, bytes: Uint8Array): P
   });
 }
 
+const EMPTY = new Uint8Array(0);
+
 /**
  * Terminates a streaming response.
  *
@@ -75,12 +77,20 @@ export function terminateResponse(res: ServerResponse, mode: DisconnectMode): vo
       if (socket.writableLength === 0) {
         afterFlush();
       } else {
-        const fallback = setTimeout(reset, 1_000);
-        fallback.unref();
-        socket.once('drain', () => {
+        // 'drain' is only emitted after a write() that returned false, so it never fires when a
+        // few bytes are still queued below the high-water mark (common on Windows, where writes
+        // complete asynchronously). The callback of an empty write runs after everything queued
+        // before it has been handed to the OS, whether or not the buffer was ever full.
+        let flushed = false;
+        const onFlushed = (): void => {
+          if (flushed) return;
+          flushed = true;
           clearTimeout(fallback);
           afterFlush();
-        });
+        };
+        const fallback = setTimeout(onFlushed, 1_000);
+        fallback.unref();
+        socket.write(EMPTY, onFlushed);
       }
       return;
     }

@@ -1,5 +1,7 @@
 /** Regression tests for defects found in the internal adversarial review. */
+import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
+import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { request } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,7 +15,7 @@ import {
 } from '../src/recording/recording.js';
 import { createReplayPlan } from '../src/replay/plan.js';
 import { sleep } from '../src/faults/executor.js';
-import { endResponse } from '../src/node/response.js';
+import { endResponse, terminateResponse } from '../src/node/response.js';
 
 const enc = new TextEncoder();
 
@@ -144,5 +146,50 @@ describe('endResponse', () => {
     await new Promise((r) => setTimeout(r, 50));
     server.close();
     expect(resolved).toBe(true);
+  });
+});
+
+describe('terminateResponse reset (XP-10)', () => {
+  /**
+   * A socket with bytes still queued below the high-water mark: 'drain' never fires, which
+   * is what Windows CI showed (509 bytes queued, RST only after the 1 s fallback).
+   */
+  function queuedSocket() {
+    const socket = new EventEmitter() as EventEmitter & {
+      destroyed: boolean;
+      writableLength: number;
+      writableNeedDrain: boolean;
+      write: (chunk: Uint8Array, cb: () => void) => boolean;
+      resetAndDestroy: () => void;
+      resetAt: number | null;
+    };
+    socket.destroyed = false;
+    socket.writableLength = 509;
+    socket.writableNeedDrain = false;
+    socket.resetAt = null;
+    socket.write = (_chunk, cb) => {
+      // The OS accepts the queued bytes shortly; callbacks run in order after that.
+      setTimeout(() => {
+        socket.writableLength = 0;
+        cb();
+      }, 5);
+      return true;
+    };
+    socket.resetAndDestroy = () => {
+      socket.resetAt = performance.now();
+      socket.destroyed = true;
+    };
+    return socket;
+  }
+
+  it('sends the RST once queued bytes are flushed, without waiting for a drain that never comes', async () => {
+    const socket = queuedSocket();
+    const res = { destroyed: false, socket } as unknown as ServerResponse;
+    const started = performance.now();
+    terminateResponse(res, 'reset');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(socket.resetAt).not.toBeNull();
+    // 15 ms grace on Windows plus timer slack; the old code waited for the 1 s fallback.
+    expect(socket.resetAt! - started).toBeLessThan(150);
   });
 });
