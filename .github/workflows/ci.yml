@@ -57,7 +57,7 @@ jobs:
       - name: CLI smoke test
         run: pnpm smoke
       - name: Pack and install outside the repository
-        run: node scripts/pack-test.mjs
+        run: pnpm test:pack
 
   e2e:
     name: Studio end-to-end (Playwright, Chromium)

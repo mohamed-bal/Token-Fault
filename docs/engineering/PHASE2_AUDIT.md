@@ -83,8 +83,27 @@ Areas that held up under attack are listed in the security reviewer's notes and 
 | DOC-2 | THREAT_MODEL T10 claims a single percent-decode (see SEC-6)                     | Correct after the fix            |
 | DOC-3 | Benchmarks and packaging status are not documented                              | `BENCHMARKS.md`; release section |
 
+### Studio (accessibility and terminology review)
+
+| ID    | Sev | Finding                                                                                                                 | Correction                                                                                 |
+| ----- | --- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| STU-1 | M   | "Export recording" was a link disabled with `pointer-events: none`, still activatable from the keyboard while streaming | Disabled `<button>` until the session ends                                                 |
+| STU-2 | M   | Focus fell to `<body>` after sign-in, sign-out and navigation; the document title never changed                         | Focus the view's `<main>` on navigation, focus the token field on load, per-view titles    |
+| STU-3 | M   | Event listbox had no `aria-activedescendant`; tabs lacked `aria-controls`, tab panels and arrow-key support             | WAI-ARIA listbox and tabs patterns                                                         |
+| STU-4 | M   | Injected faults were shown only by amber colour (scenario badge, timeline markers); usage from the mock looked measured | "fault:" badges, "faults injected by TokenFault", timeline label and legend, usage wording |
+| STU-5 | M   | `faint` text (2.7–3.3:1) failed WCAG 1.4.3 contrast (found by axe-core)                                                 | Raised to ≥ 4.5:1 on every surface                                                         |
+| STU-6 | L   | Information only in `title` tooltips; targets below 24 px; "chunk" used for both completion chunks and network reads    | Visible hints, 24 px minimum targets, "completion chunk" / "network chunk" wording         |
+
 ### Repository hygiene
 
 | ID    | Finding                                                                                                                                                      | Correction                          |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
 | GIT-1 | The obsolete branch `ccr-c63d96e2-537cz5` still exists on the remote (same commit as `main`). Deleting it from this environment is refused by the git proxy. | Delete it manually in the GitHub UI |
+
+## Resolution
+
+All findings above are fixed in local commits on top of `6fe5140`, each with a regression test, except XP-8
+(documented) and GIT-1 (manual). Commits: `a459227` (SEC-1..7, PERF-1/2, XP-1..7), `38222e8` (SEC-8),
+`2dd47b3` (DOC-2 and auth documentation), `7e4348f` (PKG-1..6), `f0c04f3` (CI matrix and audit), `c4556fb`
+(benchmarks, DOC-3), `5689324` (CLI recording overwrite DX), `83e1383` (STU-1..6), and the final documentation
+commit (DOC-1). Cross-platform fixes XP-1..7 are verified on Linux only until the Windows and macOS CI jobs run.

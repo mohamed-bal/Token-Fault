@@ -221,9 +221,10 @@ the whole exchange. _(Found by the internal review.)_
 ## D-021 — The control plane requires a token by default
 
 The control API exposes captured completions, fault control and replay. Loopback binding, `Host` checks and
-`Origin` checks block remote hosts and web pages, but not other local processes or users (residual risk 1 in
-0.1.0). From 0.2.0 every proxy run requires a control token on all control routes except `GET /api/health`,
-the auth endpoints and the static Studio assets.
+`Origin` checks block remote hosts and web pages, but not other local processes or users (residual risk 1 before
+the phase 2 audit). Every proxy run now requires a control token on all control routes except `GET /api/health`,
+the auth endpoints and the static Studio assets. This landed before any release, so no published version ever
+had an unauthenticated control API.
 
 - **Token:** 256 random bits (base64url), generated per run and printed once to the terminal. The operator can
   supply one through `TOKENFAULT_CONTROL_TOKEN` (≥ 32 printable characters). It is never accepted as a
@@ -234,8 +235,8 @@ the auth endpoints and the static Studio assets.
   put in a URL, in browser storage or in the static bundle, so page scripts cannot read it.
 - **Comparison:** SHA-256 digests compared with `timingSafeEqual`, which hides the length too. After 10 failed
   logins in 60 s, further logins get 429.
-- **Opt-out:** `--no-control-auth` (or `controlToken: null` in code) restores the 0.1.0 behaviour and prints a
-  warning. `startProxy()` in `@tokenfault/testing` generates a token and passes it to its `ControlClient`
+- **Opt-out:** `--no-control-auth` (or `controlToken: null` in code) restores the unauthenticated behaviour and
+  prints a warning. `startProxy()` in `@tokenfault/testing` generates a token and passes it to its `ControlClient`
   automatically, so test code does not change.
 
 Alternatives considered:

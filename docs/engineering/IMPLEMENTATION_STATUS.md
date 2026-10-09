@@ -1,7 +1,7 @@
 # Implementation Status
 
 - **Last updated:** 2026-10-09
-- **Version:** 0.1.0 (unreleased)
+- **Version:** 0.1.0 (unreleased, not published)
 - **Environment of record:** Linux x64, Node.js 22.22.0, pnpm 10.28.0, Chromium 1194 (Playwright 1.56.1)
 
 This file reports the state that was **verified**, not planned progress.
@@ -18,44 +18,66 @@ This file reports the state that was **verified**, not planned progress.
 | Record the session                         | ✅     | Studio export, `--record`, `--record-dir`; `recording-static.test.ts`, smoke, E2E                                             |
 | Replay without contacting an AI API        | ✅     | In-Studio replay, `tokenfault replay` local and `--serve`; `recording-replay.test.ts`, `recording-static.test.ts`, smoke, E2E |
 
-## Quality gates (latest local run)
+## Quality gates
 
-| Gate                                               | Command                    | Result                                                                                                        |
-| -------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Build                                              | `pnpm build`               | ✅ pass                                                                                                       |
-| Typecheck (all packages, tests, E2E, tool configs) | `pnpm typecheck`           | ✅ pass                                                                                                       |
-| Lint (type-aware, `--max-warnings=0`)              | `pnpm lint`                | ✅ pass                                                                                                       |
-| Format                                             | `pnpm format:check`        | ✅ pass                                                                                                       |
-| Unit tests                                         | `pnpm test:unit`           | ✅ 200 passed, 11 files                                                                                       |
-| Integration + contract tests                       | `pnpm test:integration`    | ✅ 79 passed, 5 files                                                                                         |
-| CLI smoke test (built binary)                      | `pnpm smoke`               | ✅ 34/34 checks                                                                                               |
-| E2E (Playwright, Chromium)                         | `pnpm test:e2e`            | ✅ 3 passed                                                                                                   |
-| GitHub Actions CI                                  | `.github/workflows/ci.yml` | ⚪ **Not run yet**: the workflow exists but has not run on GitHub (nothing pushed when this file was written) |
-| macOS / Windows                                    | —                          | ⚪ **Not run**                                                                                                |
-| Code coverage                                      | —                          | ⚪ **Not measured**: no coverage tooling configured; no percentage is claimed                                 |
-| Performance benchmarks                             | —                          | ⚪ **Not measured**: no benchmark numbers are claimed                                                         |
+Local results are from the Linux environment of record above. GitHub results are quoted from GitHub Actions; a
+platform without a GitHub result is **not verified**.
+
+| Gate                                               | Command                 | Result (local, Linux)                                   |
+| -------------------------------------------------- | ----------------------- | ------------------------------------------------------- |
+| Build                                              | `pnpm build`            | ✅ pass                                                 |
+| Typecheck (all packages, tests, E2E, tool configs) | `pnpm typecheck`        | ✅ pass                                                 |
+| Lint (type-aware, `--max-warnings=0`)              | `pnpm lint`             | ✅ pass                                                 |
+| Format                                             | `pnpm format:check`     | ✅ pass                                                 |
+| Unit tests                                         | `pnpm test:unit`        | ✅ 206 passed, 12 files                                 |
+| Integration + contract tests                       | `pnpm test:integration` | ✅ 96 passed, 7 files                                   |
+| CLI smoke test (built binary)                      | `pnpm smoke`            | ✅ 36/36 checks                                         |
+| E2E incl. accessibility (Playwright, Chromium)     | `pnpm test:e2e`         | ✅ 6 passed (axe-core WCAG 2.2 AA rules on every view)  |
+| External install from packed tarballs              | `pnpm test:pack`        | ✅ 57/57 checks                                         |
+| Dependency audit                                   | `pnpm audit`            | ✅ 0 known advisories (all and production dependencies) |
+| Benchmarks                                         | `pnpm bench`            | Measured, not a gate: [BENCHMARKS.md](BENCHMARKS.md)    |
+| Code coverage                                      | —                       | ⚪ Not measured; no percentage is claimed               |
+
+| Platform (GitHub Actions) | Result                                                                                                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux, Node 22            | ✅ Run #1 ([37934154330](https://github.com/mohamed-bal/Token-Fault/actions/runs/37934154330)) passed on `6fe5140` (`verify` and `e2e`). Later commits: not run yet. |
+| Windows, Node 22          | ⚪ Not verified: the matrix job exists in `ci.yml` but has not run on GitHub                                                                                         |
+| macOS, Node 22            | ⚪ Not verified: as above                                                                                                                                            |
+| Linux, Node 24            | ⚪ Not verified: as above                                                                                                                                            |
 
 ### Test inventory
 
-| File                                            | Tests | Focus                                                                                                                                     |
-| ----------------------------------------------- | ----: | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core/test/sse-decoder.test.ts`        |    39 | WHATWG rules, line endings, split UTF-8, invalid UTF-8, bounded memory, partition invariance (1-byte and 200 random partitions)           |
-| `packages/core/test/sse-framer-encoder.test.ts` |     8 | Byte-exact framing, CRLF across chunks, encoder round-trip                                                                                |
-| `packages/core/test/chat-stream.test.ts`        |    17 | Interpreter, accumulator, protocol violations, retention bounds                                                                           |
-| `packages/core/test/stream-inspector.test.ts`   |    11 | Metrics, outcomes, capture limits, redaction                                                                                              |
-| `packages/core/test/faults.test.ts`             |    41 | Schema validation, determinism, scenarios A–I planning, executor                                                                          |
-| `packages/core/test/recording-replay.test.ts`   |    18 | Redaction skeletons, schema validation (malicious inputs), replay modes and timing                                                        |
-| `packages/core/test/review-regressions.test.ts` |     7 | Review regressions: hostile recording data, replayability, long sleeps, `endResponse`                                                     |
-| `packages/shared/test/redact.test.ts`           |    21 | Sensitive headers, query redaction, secret scrubbing                                                                                      |
-| `packages/proxy/test/target-headers.test.ts`    |    27 | Target lock, traversal, header policy, request metadata                                                                                   |
-| `packages/proxy/test/session-store.test.ts`     |     4 | Eviction, batching, subscriber isolation                                                                                                  |
-| `packages/cli/test/cli.test.ts`                 |     7 | Terminal sanitisation, option parsing, entry point                                                                                        |
-| `tests/integration/mock-llm.test.ts`            |    20 | Mock protocol and scenarios A–I observed by a real client                                                                                 |
-| `tests/integration/proxy.test.ts`               |    35 | AC-2.1–2.9: streaming, headers, cancellation, resets, timeouts, backpressure, SSRF, DNS rebinding, control-plane guard, replay, live feed |
-| `tests/integration/recording-static.test.ts`    |    12 | Recorder permissions and retention, replay server, static file traversal and symlinks                                                     |
-| `tests/integration/openai-sdk.test.ts`          |     6 | Contract with the official `openai` SDK 5.23.2                                                                                            |
-| `tests/integration/example-client.test.ts`      |     6 | Reference resilient client against the scenarios                                                                                          |
-| `tests/e2e/studio.spec.ts`                      |     3 | Full Studio journey, Fault Lab, CSP and cross-site rejection                                                                              |
+| File                                            | Tests | Focus                                                                                                                                                          |
+| ----------------------------------------------- | ----: | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core/test/sse-decoder.test.ts`        |    39 | WHATWG rules, line endings, split UTF-8, invalid UTF-8, bounded memory, partition invariance (1-byte and 200 random partitions), CRLF size limits              |
+| `packages/core/test/sse-framer-encoder.test.ts` |     8 | Byte-exact framing, CRLF across chunks, encoder round-trip                                                                                                     |
+| `packages/core/test/chat-stream.test.ts`        |    17 | Interpreter, accumulator, protocol violations, retention bounds                                                                                                |
+| `packages/core/test/stream-inspector.test.ts`   |    12 | Metrics, outcomes, capture limits, redaction, native/portable base64 equivalence                                                                               |
+| `packages/core/test/faults.test.ts`             |    41 | Schema validation, determinism, scenarios A–I planning, executor                                                                                               |
+| `packages/core/test/recording-replay.test.ts`   |    18 | Redaction skeletons, schema validation (malicious inputs), replay modes and timing                                                                             |
+| `packages/core/test/review-regressions.test.ts` |     7 | Review regressions: hostile recording data, replayability, long sleeps, `endResponse`                                                                          |
+| `packages/shared/test/redact.test.ts`           |    22 | Sensitive headers, query redaction (including bare parameters), secret scrubbing                                                                               |
+| `packages/proxy/test/target-headers.test.ts`    |    27 | Target lock, traversal, header policy (including isolation headers), request metadata                                                                          |
+| `packages/proxy/test/session-store.test.ts`     |     4 | Eviction, batching, subscriber isolation                                                                                                                       |
+| `packages/cli/test/cli.test.ts`                 |     7 | Terminal sanitisation, option parsing, entry point                                                                                                             |
+| `packages/cli/test/meta.test.ts`                |     4 | Studio asset discovery (bundled, monorepo, env, unrelated `apps/studio` never served)                                                                          |
+| `tests/integration/mock-llm.test.ts`            |    20 | Mock protocol and scenarios A–I observed by a real client                                                                                                      |
+| `tests/integration/proxy.test.ts`               |    36 | AC-2.1–2.9: streaming, headers, cancellation, resets, timeouts, backpressure, SSRF, DNS rebinding, control-plane guard, replay, live feed, event-loop fairness |
+| `tests/integration/control-auth.test.ts`        |     9 | Control token: 401s, Bearer, cookie attributes, logout, Origin guard, rate limit, disabled mode, token never logged                                            |
+| `tests/integration/security-p2.test.ts`         |     7 | Phase 2 security regressions SEC-1 to SEC-7                                                                                                                    |
+| `tests/integration/recording-static.test.ts`    |    12 | Recorder permissions and retention, replay server, static file traversal and symlinks (symlink case skipped where the OS forbids them)                         |
+| `tests/integration/openai-sdk.test.ts`          |     6 | Contract with the official `openai` SDK 5.23.2                                                                                                                 |
+| `tests/integration/example-client.test.ts`      |     6 | Reference resilient client against the scenarios                                                                                                               |
+| `tests/e2e/studio.spec.ts`                      |     4 | Sign-in and token storage, full Studio journey, Fault Lab, CSP and cross-site rejection                                                                        |
+| `tests/e2e/accessibility.spec.ts`               |     2 | axe-core WCAG 2.2 AA on sign-in, Overview, Inspector (normal and faulted), Fault Lab, Replay; keyboard operation of list and tabs                              |
+
+## Phase 2 audit (2026-10-09)
+
+Findings, fixes and regression tests: [PHASE2_AUDIT.md](PHASE2_AUDIT.md). Summary: 8 security/privacy findings
+(SEC-1 to SEC-8, highest Medium), 2 performance defects, 6 packaging defects (PKG-1 High: the packages could not be
+installed outside the monorepo), 8 cross-platform issues and 3 documentation inaccuracies. All are fixed except
+XP-8 (POSIX file modes on Windows), which is documented. The Studio accessibility and terminology review fixes are
+in commit `83e1383`.
 
 ## Internal adversarial review (2026-10-09)
 
@@ -90,29 +112,32 @@ All items under _Implemented_ in [ROADMAP.md](../../ROADMAP.md).
 4. **Event `endOffset` for CRLF streams.** The trailing LF of a CRLF blank line is not attributed to any event.
    This is deliberate, for chunk-invariance (DECISIONS D-004).
 5. **No upstream `HTTP(S)_PROXY` support** (`doctor` warns about it).
-6. **Studio** is dark-only and has not had a formal accessibility audit. Keyboard navigation exists for the
-   event list, tabs and controls.
+6. **Studio** is dark-only. Automated axe-core checks (WCAG 2.2 AA rules) and keyboard tests pass, but there has
+   been no manual screen-reader audit; automated checks catch only part of WCAG.
+7. **Windows file permissions.** Recording files are not restricted to the current user on Windows (XP-8).
+8. **Control token in the terminal.** The token is printed once on start; anyone who can see that terminal can use
+   the control API.
 
 ## Unfinished work
 
-- Publishing (npm), release automation, signed artifacts
-- CI on macOS/Windows, dependency audit, coverage reporting
+- First npm publication and GitHub release (release-ready, waiting for approval; see [RELEASE.md](RELEASE.md))
+- CI results for Windows, macOS and Node 24 (configured, not run yet)
+- Coverage reporting; E2E on Windows and macOS
 - Responses API and Anthropic Messages adapters (not claimed as supported)
-- Optional control-API token for multi-user machines
 
 ## Technical risks
 
-| Risk                                                                      | Impact                                                           | Mitigation / next step                                                     |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| CI has not run on GitHub yet                                              | Hidden environment differences (e.g. Playwright browser install) | Push the branch and watch the first run                                    |
-| Toolchain majors moved on (TS 7, Vite 8, Vitest 5)                        | Future upgrade effort                                            | Versions pinned; upgrade deliberately (DECISIONS D-002)                    |
-| Behaviour of other OpenAI-compatible servers (vLLM, Ollama, OpenRouter …) | Unknown keys or different terminators                            | The interpreter reports rather than fails; add fixtures from real captures |
-| Fastify `hijack()` streaming relies on raw Node semantics                 | Fastify upgrades could change hook behaviour                     | Integration tests cover hijacked paths                                     |
+| Risk                                                                      | Impact                                                         | Mitigation / next step                                                     |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Windows/macOS CI has not run yet                                          | Platform differences in signals, file modes, paths and sockets | Push and watch the matrix; fixes for known issues (XP-1..7) are in place   |
+| Toolchain majors moved on (TS 7, Vite 8, Vitest 5)                        | Future upgrade effort                                          | Versions pinned; upgrade deliberately (DECISIONS D-002)                    |
+| Behaviour of other OpenAI-compatible servers (vLLM, Ollama, OpenRouter …) | Unknown keys or different terminators                          | The interpreter reports rather than fails; add fixtures from real captures |
+| Fastify `hijack()` streaming relies on raw Node semantics                 | Fastify upgrades could change hook behaviour                   | Integration tests cover hijacked paths                                     |
 
 ## Next priorities
 
-1. Push the branch, run CI, and fix any environment-specific failures.
-2. Confirm the copyright holder in `LICENSE` (DECISIONS D-013).
-3. Add macOS and Windows CI runners. Add a dependency audit.
-4. Publish `tokenfault`, `@tokenfault/core` and `@tokenfault/testing` to npm (packages are currently `private`).
-5. Add an optional control-API token. Then the Responses API adapter with contract tests.
+1. Push (with approval) and get the Windows, macOS and Node 24 CI results; fix any platform failures.
+2. Delete the obsolete remote branch `ccr-c63d96e2-537cz5` (GIT-1, manual).
+3. Apply the repository metadata proposed in [RELEASE.md](RELEASE.md) (manual).
+4. First release 0.1.0 following [RELEASE.md](RELEASE.md), once every gate passes and the maintainer approves.
+5. Responses API adapter with contract tests.

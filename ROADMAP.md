@@ -1,8 +1,8 @@
 # Roadmap
 
-Status legend: **Implemented** (shipped and tested) · **In progress** · **Planned** · **Experimental**.
+Status legend: **Implemented** (in the code and covered by tests; nothing is published yet) · **In progress** · **Planned** · **Experimental**.
 
-## Implemented (v0.1.0)
+## Implemented (0.1.0, unreleased)
 
 - Byte-level incremental SSE decoder, byte-exact framer and encoder
 - OpenAI-compatible Chat Completions stream interpreter and accumulator (content, roles, tool calls, finish reasons, usage, in-stream errors, `[DONE]`)
@@ -15,13 +15,15 @@ Status legend: **Implemented** (shipped and tested) · **In progress** · **Plan
 - CLI: `proxy`, `mock`, `inspect`, `scenarios`, `replay`, `doctor`
 - `@tokenfault/testing` helpers and a reference resilient client example
 - Contract tests against the official `openai` Node SDK 5.x
+- Control-plane token (Bearer for tools, cookie sign-in for the Studio), on by default
+- Release-ready npm packages (validated by an external install test; not published)
+- CI on Linux, Windows and macOS; dependency audit; benchmark suite
 
 ## Planned
 
-- **Publishing:** npm packages for `tokenfault` (CLI), `@tokenfault/core` and `@tokenfault/testing`; signed release process
-- **CI coverage:** macOS and Windows runners; dependency audit; coverage reporting
+- **Publishing:** first npm release (needs the maintainer's approval); npm provenance; release automation
+- **CI coverage:** coverage reporting; Playwright E2E on Windows and macOS
 - **Protocols:** OpenAI Responses API adapter (with contract tests), then Anthropic Messages API adapter
-- **Control-plane token:** optional per-run token for multi-user machines
 - **Faults:** time-windowed faults (fault every N-th request, probability with seed), upstream-error passthrough injection, header delays per event
 - **Recordings:** streaming (NDJSON) format for very long sessions; recording diff between two runs
 - **Studio:** side-by-side session comparison; filtering events by kind; persisted UI preferences

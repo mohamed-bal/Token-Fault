@@ -28,7 +28,9 @@ E2E tests need Chromium for Playwright: `pnpm exec playwright install chromium` 
 | `tests/integration`     | Real-socket integration and contract tests           |
 | `tests/e2e`             | Playwright tests                                     |
 | `scripts/cli-smoke.mjs` | CLI smoke test against the built binary              |
-| `docs/engineering`      | Decisions, threat model, status, MVP spec            |
+| `scripts/pack-test.mjs` | External install test from packed tarballs           |
+| `bench`                 | Benchmark suite (not a CI gate)                      |
+| `docs/engineering`      | Decisions, threat model, status, audits, benchmarks  |
 
 ## Development loop
 
@@ -37,7 +39,12 @@ pnpm test:unit                         # fast: runs against TypeScript sources, 
 pnpm test:integration
 pnpm tokenfault proxy --mock           # after `pnpm build`
 pnpm --filter @tokenfault/studio dev   # Studio with hot reload; proxies the API to http://127.0.0.1:8787
+pnpm test:pack                         # after `pnpm build`: pack, install outside the repo with npm, run (needs the npm registry)
+pnpm bench -- --quick                  # after `pnpm build`: benchmarks (measurement only)
 ```
+
+The proxy prints a control token on start; sign in to the Studio (including the Vite dev server) with it.
+Packaging changes (`package.json` `files`, `exports`, dependencies) must keep `pnpm test:pack` passing.
 
 ## Rules for changes
 

@@ -1,6 +1,6 @@
 # Threat Model
 
-- **Scope:** TokenFault 0.2.0 (proxy, mock, CLI, Studio, recordings).
+- **Scope:** TokenFault 0.1.0, unreleased (proxy, mock, CLI, Studio, recordings).
 - **Method:** asset- and entry-point-driven review. Each mitigation links to the code or test that implements it.
 - **Status:** internal review only: one adversarial code review in phase 1 (T19, T20) and the phase 2 security and portability audit (T21–T26, `PHASE2_AUDIT.md`). Findings are fixed with regression tests. No external audit has been performed.
 

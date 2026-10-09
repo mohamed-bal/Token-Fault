@@ -12,8 +12,9 @@ bundled mock LLM means you need no API key, paid model or cloud account.
 
 ![TokenFault Studio: stream inspector showing a jittered stream](docs/assets/studio-inspector.png)
 
-> **Status: v0.1.0, pre-release.** It works end to end and is covered by unit, integration, contract,
-> CLI smoke and browser tests. It has not been published to npm. See
+> **Status: 0.1.0, pre-release.** It works end to end and is covered by unit, integration, contract,
+> CLI smoke, external-install and browser tests. The packages are release-ready but **not published to npm** yet,
+> so install from source. See
 > [Implementation status](docs/engineering/IMPLEMENTATION_STATUS.md) for what is and isn't done.
 
 ## What it is (and isn't)
@@ -223,7 +224,7 @@ TokenFault has not had an external security audit.
 | `@tokenfault/proxy`    | Streaming proxy, session store, control API, live feed, recorder, replay manager/server, Studio host.                                                  |
 | `@tokenfault/testing`  | In-process stacks, measuring client, control-API client.                                                                                               |
 | `tokenfault` (cli)     | The `tokenfault` binary.                                                                                                                               |
-| `@tokenfault/studio`   | The Studio web UI.                                                                                                                                     |
+| `@tokenfault/studio`   | The Studio web UI (private; its build is bundled into the `tokenfault` package).                                                                       |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) and the [decision log](docs/engineering/DECISIONS.md).
 
@@ -236,7 +237,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and the [decision log](docs/engineering/D
 - Sessions live in memory only (200 by default). Recordings are the persistence mechanism.
 - Replay reproduces recorded bytes or events and their timing. It does not regenerate a model response.
 - Fragment timing depends on the OS network stack: separate writes usually arrive as separate reads, but TCP does not guarantee it.
-- Tested on Linux with Node 22. macOS and Windows have not been verified in CI yet.
+- Verified in CI on Linux with Node 22. Windows, macOS and Node 24 jobs are configured but have not produced results yet.
 
 ## Development
 
@@ -247,12 +248,15 @@ pnpm typecheck
 pnpm lint
 pnpm test             # unit + integration (Vitest)
 pnpm smoke            # CLI smoke test against the built binary
-pnpm test:e2e         # Playwright (Chromium) Studio journey
+pnpm test:e2e         # Playwright (Chromium) Studio journey and accessibility checks
+pnpm test:pack        # pack and install the packages outside the repo (needs the npm registry)
+pnpm bench            # benchmarks (measurement only; see docs/engineering/BENCHMARKS.md)
 pnpm verify           # everything above, in order
 pnpm --filter @tokenfault/studio dev   # Studio dev server; proxies the API to a running `tokenfault proxy`
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The roadmap is in [ROADMAP.md](ROADMAP.md) and changes are in [CHANGELOG.md](CHANGELOG.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). The roadmap is in [ROADMAP.md](ROADMAP.md), changes are in [CHANGELOG.md](CHANGELOG.md),
+and the release process and readiness gates are in [RELEASE.md](docs/engineering/RELEASE.md).
 
 ## License
 
