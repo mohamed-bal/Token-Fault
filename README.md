@@ -59,6 +59,18 @@ pnpm tokenfault inspect --scenario mid-stream-disconnect --record broken.tfrec.j
 pnpm tokenfault replay broken.tfrec.json                    # reproduces the failure, no model contacted
 ```
 
+### Troubleshooting local startup
+
+If port `8787` is already in use, start TokenFault on a different port:
+
+```bash
+pnpm tokenfault proxy --mock --port 8788
+```
+
+Open the Studio URL printed in the terminal and use the control token generated for that session.
+
+You can also run `pnpm tokenfault doctor` to inspect the local environment and identify potential configuration issues.
+
 ### Point your application at it
 
 TokenFault is a drop-in base URL for OpenAI-compatible SDKs:
